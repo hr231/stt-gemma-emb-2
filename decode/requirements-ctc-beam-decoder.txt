@@ -1,0 +1,5 @@
+# ctc-beam-decoder 0.2.0, macOS arm64 wheel (py3-none-macosx_14_0_arm64), sha256 verified against
+# https://pypi.org/pypi/ctc-beam-decoder/0.2.0/json on 2026-10-14. Install with:
+#   ~/.venv-gemma-stt/bin/pip install --no-deps --require-hashes -r decode/requirements-ctc-beam-decoder.txt
+# --no-deps: its only dependency (numpy) is already pinned by the training venv.
+ctc-beam-decoder==0.2.0 --hash=sha256:6d9c57e1314bfbece1343869eee8f2ebbaaca0568fa4ca1499be2ad431e068eb
