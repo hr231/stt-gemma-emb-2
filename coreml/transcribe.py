@@ -49,10 +49,10 @@ def plan_segments(m, max_mel=MAX_MEL, context=CONTEXT_MEL, search=SEARCH_MEL):
 
 
 class Transcriber:
-    def __init__(self, variant="faithful", precision="fp16", compute_units="CPU_AND_NE"):
+    def __init__(self, variant="faithful", precision="fp16", compute_units="CPU_AND_NE", cml=None):
         check_v1_files()
         t0 = time.time()
-        self.cml = V1CoreML(variant, precision, compute_units)
+        self.cml = cml if cml is not None else V1CoreML(variant, precision, compute_units)
         self.decoder = beam_decoder()
         self.load_s = time.time() - t0
 
