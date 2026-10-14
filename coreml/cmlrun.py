@@ -9,6 +9,7 @@ import fcntl
 import hashlib
 import json
 import time
+import threading
 
 import numpy as np
 
@@ -59,11 +60,16 @@ class V1CoreML:
         import coremltools as ct
         self.variant, self.precision, self.compute_units = variant, precision, compute_units
         self.models, self.load_s = {}, {}
+        # Core ML releases a prediction's input feature values later, on its own queue; if Python has
+        # dropped the arrays by then the process segfaults (MLE5ExecutionStream resetAfterLingering).
+        # So every window keeps its input buffers for the model's lifetime and reuses them.
+        self._inputs, self._lock = {}, threading.Lock()
         for w in windows or WINDOWS:
             t0 = time.time()
             self.models[w] = ct.models.CompiledMLModel(str(compiled_path(variant, precision, w)),
                                                        compute_units=getattr(ct.ComputeUnit, compute_units))
             self.load_s[w] = time.time() - t0
+            self._inputs[w] = (np.zeros((1, WINDOWS[w], 128), np.float32), np.zeros(1, np.int32))
 
     @staticmethod
     def window_for(n_mel, windows=WINDOWS):
@@ -73,14 +79,16 @@ class V1CoreML:
         return fits[0]
 
     def predict(self, mel, n_valid, window=None):
-        """(log_probs [ceil(n_valid/4), 257], l11 [ceil(n_valid/4), 1024]) as float32."""
+        """(log_probs [ceil(n_valid/4), 257], l11 [ceil(n_valid/4), 1024]) as float32 copies."""
         w = window or self.window_for(len(mel))
-        t = WINDOWS[w]
-        x = np.zeros((1, t, 128), np.float32)
-        x[0, :len(mel)] = mel
-        out = self.models[w].predict({"mel": x, "valid_len": np.array([n_valid], np.int32)})
         n = -(-n_valid // 4)
-        return (np.asarray(out["log_probs"], np.float32)[0, :n], np.asarray(out["l11"], np.float32)[0, :n])
+        with self._lock:
+            x, v = self._inputs[w]
+            x[0, :len(mel)] = mel
+            x[0, len(mel):] = 0.0
+            v[0] = n_valid
+            out = self.models[w].predict({"mel": x, "valid_len": v})
+            return (np.array(out["log_probs"], np.float32)[0, :n], np.array(out["l11"], np.float32)[0, :n])
 
 
 def load_reference(name="fast"):
