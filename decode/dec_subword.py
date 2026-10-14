@@ -133,9 +133,21 @@ class SubwordBeamDecoder:
         logp = np.asarray(logp, dtype=np.float32)
         if len(logp) == 0:
             return []
-        comb = max if self.merge == "max" else _logaddexp
+        return self.final_ids(self.step(self.start(), logp))
+
+    # Incremental use (streaming): beams = start(); beams = step(beams, chunk) per chunk of frames;
+    # best_ids(beams) = current best hypothesis; final_ids(beams) = result after the last chunk.
+    # step() is the frame loop of decode_ids, so feeding chunks gives exactly the full-utterance result.
+    def start(self):
         root = Node(None, -1, self.lm.start() if self.use_lm else None, 0.0)
-        beams = [(root, 0.0, NEG_INF)]               # (node, score ending in blank, in last token)
+        return [(root, 0.0, NEG_INF)]               # (node, score ending in blank, in last token)
+
+    def step(self, beams, logp):
+        """Advance the beam list over log-probs [T, C] (any number of frames); returns the new list."""
+        logp = np.asarray(logp, dtype=np.float32)
+        if len(logp) == 0:
+            return beams
+        comb = max if self.merge == "max" else _logaddexp
         blank = self.blank
         frame_toks = self._frame_tokens(logp)
         rows = logp.tolist()
@@ -178,7 +190,15 @@ class SubwordBeamDecoder:
             top = heapq.nsmallest(self.beam, scored)   # == sorted(scored)[:beam]
             floor = -top[0][0] + self.beam_prune_logp
             beams = [(s[3], s[4], s[5]) for s in top if -s[0] >= floor]
+        return beams
 
+    @staticmethod
+    def best_ids(beams):
+        """Current best hypothesis (no end-of-sentence scoring)."""
+        return beams[0][0].tokens()
+
+    def final_ids(self, beams):
+        comb = max if self.merge == "max" else _logaddexp
         if self.use_lm and self.eos:
             final = [(comb(vb, vnb) + node.fused + self.alpha * self.lm.final(node.state), i, node)
                      for i, (node, vb, vnb) in enumerate(beams)]
