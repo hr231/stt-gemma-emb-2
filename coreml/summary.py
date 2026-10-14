@@ -31,7 +31,7 @@ def key_metrics(test, m):
         return "; ".join(f"{s} WER {100 * v['wer']:.3f} % (V1 {100 * v['v1_wer']:.3f} %, diff {v['diff_points']:+.3f})"
                          for s, v in m.items())
     if test.startswith("test_t10"):
-        return "; ".join(f"{r['precision']} {r['compute_units']}: e2e {r['rtfx_e2e']:.1f}x, enc+head {r['rtfx_model']:.1f}x, "
+        return "; ".join(f"{r.get('variant', '?')}/{r['precision']} {r['compute_units']}: e2e {r['rtfx_e2e']:.1f}x, enc+head {r['rtfx_model']:.1f}x, "
                          f"WER {100 * r['wer']:.3f} %, RSS {r['peak_rss_mb']:.0f} MB" for r in m["runs"])
     if test.startswith("test_t11"):
         return "; ".join(f"{s} Core ML {100 * v['coreml_wer']:.3f} % / V1 {100 * v['v1_pytorch_wer']:.3f} % / "

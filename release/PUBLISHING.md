@@ -1,25 +1,27 @@
 # Publishing V1: GitHub (code) and Hugging Face (model)
 
 Nothing here has been run against GitHub or Hugging Face. Each step is a command for you to run
-when you are ready. The check outputs quoted below were produced on 2026-10-14 at commit `d6af85b`
-(`git status`: untracked files only).
+when you are ready. The check outputs quoted below were produced on 2026-10-14 at commit `70fe4ec`
+(the working tree also had uncommitted work in progress, listed in A.1).
 
 **Decisions that are yours:**
 - **Repo names:** GitHub `emb_gemma2` or another name; Hugging Face `<user>/gemma-stt-v1-coreml`
   (`--repo-name`).
-- **Code license:** there is no `LICENSE` file yet. Common choices are Apache-2.0 and MIT. This is
-  separate from the model weights, which fall under the Gemma Terms of Use.
-- **Model license:** the card says `license: gemma`.
-  - Check that this still matches the license shown on
-    [google/embeddinggemma-2](https://huggingface.co/google/embeddinggemma-2) before publishing.
-  - Optionally gate the HF repo (Settings → "Access requests"), as Google does for Gemma weights.
-- **Git identity:** whether to rewrite the 6 local commits.
+- **License of the release:** set with `make_hf_release.py --license` (default `apache-2.0`).
+  - The base model, [google/embeddinggemma-2](https://huggingface.co/google/embeddinggemma-2) at
+    `914f7f8`, is Apache-2.0. Its card links https://ai.google.dev/gemma/docs/gemma_4_license and says
+    deployments must adhere to the [Gemma Prohibited Use Policy](https://ai.google.dev/gemma/prohibited_use_policy).
+  - With the default, `LICENSE` is the Apache License 2.0 text (`release/LICENSE-2.0.txt`, the same
+    bytes as apache.org's `LICENSE-2.0.txt`).
+  - With another id, pass `--license-file`. The release then also carries `LICENSE-APACHE-2.0` for the
+    encoder weights.
+- **Code license:** the GitHub repo has no `LICENSE` yet. `release/LICENSE-2.0.txt` can be copied to
+  `LICENSE` if you choose Apache-2.0 for the code too.
+- **Git identity:** whether to rewrite the 9 local commits.
   - They are authored `gemma-stt <gemma-stt@localhost>`.
   - The annotated tag `v1` has tagger `Harshit Brahmbhatt <harshit@Harshits-MacBook-Pro.local>`, which includes a local hostname.
   - See A.5.
-- **What to ship on HF:** fp16 only (3.2 GB), and optionally the fp32 build (+4.9 GB) and the
-  PyTorch head (+53 MB).
-- **Tokenizer path:** the tokenizer embeds a local path (see A.3).
+- **Tokenizer path:** the released tokenizer embeds a local path (see A.3).
 
 ---
 
@@ -33,12 +35,13 @@ when you are ready. The check outputs quoted below were produced on 2026-10-14 a
 | `cache_feats.py`, `featstore.py` | mel + Gemma audio tower features, int8 shard store |
 | `probe.py`, `diag.py`, `head.py`, `eval_head.py`, `train_tokenizer.py`, `watch.py`, `test_*.py` | layer probe, CTC head training / eval, tokenizer, log watcher, tests |
 | `decode/` | decoding study: `dec_*.py` decoders, `run_decode.py`, `sweep.py`, `tune.py`, `report.py`, `streaming.py`, `stream_study.py`, `build_subword_lm.py`, pinned `requirements-*.txt` |
-| `coreml/` | Core ML export (`common.py`, `wrapper.py`, `export.py`, `palettize.py`), runtime (`cmlrun.py`, `transcribe.py`), evaluation (`eval_fast.py`, `placement.py`, `bench.py`, `summary.py`), `tests/` (T1–T11) |
+| `coreml/` | Core ML export (`common.py`, `wrapper.py`, `export.py`, `export_release.py` = the release package, `palettize.py`), runtime (`cmlrun.py`, `transcribe.py`, streaming / live runners), evaluation (`eval_fast.py`, `placement.py`, `bench.py`, `summary.py`), `tests/` (T1–T11) |
+| `embed/`, `demo/` | one-pass transcript + EmbeddingGemma 2 embedding, demo CLI |
 | `Makefile` | `make test-fast / test-full / test-release / bench / summary` |
-| `release/` | this file, `make_hf_release.py`, `hf_model_card_template.md` |
+| `release/` | this file, `make_hf_release.py`, `hf_model_card_template.md`, `LICENSE-2.0.txt` (Apache License 2.0 text) |
 
-Untracked at the time of writing (the main session commits them): `coreml/pytest.ini`, `coreml/LIVE.md`, `coreml/live.py`, `coreml/livecore.py`, `coreml/palettize.py`, `demo/`, `embed/`, `release/`.
-Tracked files: 54, 408K in total, so the repo itself is tiny.
+At the time of writing (the main session commits them): untracked `coreml/LIVE.md`, `coreml/export_release.py`, `coreml/live.py`, `coreml/live_latency.py`, `coreml/livecore.py`, `coreml/palettize.py`, `coreml/stream_latency.py`, `coreml/stream_mel.py`, `coreml/stream_runner.py`, `coreml/stream_step.py`, `coreml/tests/test_stream.py`, `release/LICENSE-2.0.txt`; modified `coreml/bench.py`, `coreml/cmlrun.py`, `coreml/placement.py`, `coreml/summary.py`, `coreml/tests/conftest.py`, `coreml/tests/test_fast.py`, `coreml/tests/test_full.py`, `release/hf_model_card_template.md`, `release/make_hf_release.py`.
+Tracked files: 64, 592K in total, so the repo itself is tiny.
 
 **Excluded by `.gitignore`:**
 
@@ -155,7 +158,7 @@ the patch below fixes them):
 **Documentation and usage strings** (docstrings, comments, `README.md`): they show `~/gemma_stt/...`
 and `~/.venv-*` as examples. They are harmless; you could rewrite them to `$GEMMA_STT_HOME/...`.
 
-<details><summary>Full grep output (135 lines)</summary>
+<details><summary>Full grep output (170 lines)</summary>
 
 ```
 Makefile:7:#   make summary        rebuild ~/gemma_stt/coreml/summary.md from results.jsonl
@@ -181,22 +184,24 @@ cache_feats.py:14:      --taps L6 L9 L11 --out ~/gemma_stt/feats/probe/train --v
 cache_feats.py:16:      --taps L6 L9 L11 --out ~/gemma_stt/feats/probe/dev
 cache_feats.py:21:      --taps L11 --int8 --out ~/gemma_stt/feats/full/train
 cache_feats.py:302:    ap.add_argument("--data-root", default="~/gemma_stt/data")
-coreml/LIVE.md:9:Everything is in `~/.venv-coreml`. The app needs one extra package, `sounddevice` (its macOS wheel
-coreml/LIVE.md:11:Versions added to the env are listed in `~/gemma_stt/coreml/VERSIONS_ADDED.md`.
-coreml/LIVE.md:14:~/.venv-coreml/bin/pip install sounddevice==0.5.6
-coreml/LIVE.md:15:~/.venv-coreml/bin/python -c "import sounddevice, kenlm; print(sounddevice.__version__)"
-coreml/LIVE.md:22:From the repo root (`~/emb_gemma2`):
-coreml/LIVE.md:26:~/.venv-coreml/bin/python coreml/live.py
-coreml/LIVE.md:29:~/.venv-coreml/bin/python coreml/live.py --mode A --device "MacBook Pro Microphone"
-coreml/LIVE.md:30:~/.venv-coreml/bin/python coreml/live.py --list-devices
-coreml/LIVE.md:33:~/.venv-coreml/bin/python coreml/live.py --mode C --replay ~/gemma_stt/coreml/live_sessions/dev-clean_6345-93306_0021-0025.flac
-coreml/LIVE.md:36:~/.venv-coreml/bin/python coreml/live.py --replay FILE --fast --exit-at-end --session ~/gemma_stt/coreml/live_sessions/try1
-coreml/LIVE.md:69:| `c` | save the transcript to `~/gemma_stt/coreml/live_sessions/transcript-YYYYMMDD-HHMMSS.txt` (or the `--session` folder) and copy it to the clipboard |
-coreml/LIVE.md:149:| Mode C ends with `engine stopped: ModuleNotFoundError: No module named 'kenlm'` | The LM fusion decoder needs `kenlm` in `~/.venv-coreml`; mode A works without it. |
-coreml/LIVE.md:175:  script -q ~/gemma_stt/coreml/live_sessions/take1.ansi \
-coreml/LIVE.md:176:      ~/.venv-coreml/bin/python coreml/live.py --mode C --replay FILE --exit-at-end \
-coreml/LIVE.md:177:      --session ~/gemma_stt/coreml/live_sessions/take1
-coreml/LIVE.md:185:Sample sessions are in `~/gemma_stt/coreml/live_sessions/`:
+coreml/LIVE.md:10:Everything is in `~/.venv-coreml`. The app needs one extra package, `sounddevice` (its macOS wheel
+coreml/LIVE.md:12:already built into `~/.venv-coreml` (kenlm 0.2.0, from the pinned source, recipe in the versions file).
+coreml/LIVE.md:13:Versions added to the env are listed in `~/gemma_stt/coreml/VERSIONS_ADDED.md`.
+coreml/LIVE.md:16:~/.venv-coreml/bin/pip install sounddevice==0.5.6
+coreml/LIVE.md:17:~/.venv-coreml/bin/python -c "import sounddevice, kenlm; print(sounddevice.__version__)"
+coreml/LIVE.md:24:From the repo root (`~/emb_gemma2`):
+coreml/LIVE.md:28:~/.venv-coreml/bin/python coreml/live.py
+coreml/LIVE.md:31:~/.venv-coreml/bin/python coreml/live.py --mode A --device "MacBook Pro Microphone"
+coreml/LIVE.md:32:~/.venv-coreml/bin/python coreml/live.py --list-devices
+coreml/LIVE.md:35:~/.venv-coreml/bin/python coreml/live.py --mode C --replay ~/gemma_stt/coreml/live_sessions/dev-clean_6345-93306_0021-0025.flac
+coreml/LIVE.md:38:~/.venv-coreml/bin/python coreml/live.py --replay FILE --fast --exit-at-end --session ~/gemma_stt/coreml/live_sessions/try1
+coreml/LIVE.md:43:`~/gemma_stt/coreml/compiled/` (about a minute); later starts load the compiled models. In replay
+coreml/LIVE.md:72:| `c` | save the transcript to `~/gemma_stt/coreml/live_sessions/transcript-YYYYMMDD-HHMMSS.txt` (or the `--session` folder) and copy it to the clipboard |
+coreml/LIVE.md:153:| Mode C ends with `engine stopped: ModuleNotFoundError: No module named 'kenlm'` | The LM fusion decoder needs `kenlm` in `~/.venv-coreml` (see the build recipe in `VERSIONS_ADDED.md`); mode A works without it. |
+coreml/LIVE.md:179:  script -q ~/gemma_stt/coreml/live_sessions/take1.ansi \
+coreml/LIVE.md:180:      ~/.venv-coreml/bin/python coreml/live.py --mode C --replay FILE --exit-at-end \
+coreml/LIVE.md:181:      --session ~/gemma_stt/coreml/live_sessions/take1
+coreml/LIVE.md:189:Sample sessions are in `~/gemma_stt/coreml/live_sessions/`:
 coreml/bench.py:4:  ~/.venv-coreml/bin/python coreml/bench.py [--configs fp16:CPU_AND_NE fp16:CPU_AND_GPU fp16:CPU_ONLY fp32:CPU_AND_GPU]
 coreml/bench.py:30:CACHE = Path.home() / "Library/Caches/org.python.python/com.apple.e5rt.e5bundlecache"
 coreml/bisect_ane.py:5:  ~/.venv-coreml/bin/python coreml/bisect_ane.py [--parts layer sscp head int8] [--variant faithful]
@@ -212,15 +217,32 @@ coreml/common.py:29:LOGPROBS = HOME / "gemma_stt/decode/logprobs"
 coreml/common.py:30:OUT = HOME / "gemma_stt/coreml"
 coreml/eval_fast.py:4:  ~/.venv-coreml/bin/python coreml/eval_fast.py --variant faithful --precision fp16 [--compute-units CPU_AND_NE]
 coreml/export.py:4:  ~/.venv-coreml/bin/python coreml/export.py --windows 5s 10s 20s 35s --variant faithful --precision fp16
+coreml/export_release.py:8:  ~/.venv-coreml/bin/python coreml/export_release.py [--source fp16safe/fp16] [--verify-utts 60]
 coreml/fp16_layers.py:5:  ~/.venv-coreml/bin/python coreml/fp16_layers.py --variant faithful [--n 12]
 coreml/live.py:5:  ~/.venv-coreml/bin/python coreml/live.py [--mode A|C] [--device NAME|INDEX]
 coreml/live.py:6:  ~/.venv-coreml/bin/python coreml/live.py --mode C --replay FILE [--fast] [--exit-at-end]
 coreml/live.py:34:SESSIONS = Path.home() / "gemma_stt/coreml/live_sessions"
-coreml/live.py:713:    home = str(Path.home())
+coreml/live.py:716:    home = str(Path.home())
+coreml/live_latency.py:6:  ~/.venv-coreml/bin/python coreml/live_latency.py [--limit N] [--shard I --nshards N]   # simulate
+coreml/live_latency.py:7:  ~/.venv-coreml/bin/python coreml/live_latency.py --calibrate [--quick]                 # idle machine
+coreml/live_latency.py:8:  ~/.venv-coreml/bin/python coreml/live_latency.py --report                             # tables
+coreml/live_latency.py:80:V1_HYPS = {s: Path.home() / f"gemma_stt/decode/results/{p}_{s}_cbd_sp6_beam32_units-piece/hyps.jsonl"
 coreml/make_reference.py:2:"""Fixed test lists and the PyTorch fp32 CPU reference outputs for FAST (run in ~/.venv-gemma-stt).
 coreml/make_reference.py:4:  ~/.venv-gemma-stt/bin/python coreml/make_reference.py
 coreml/palettize.py:4:  ~/.venv-coreml/bin/python coreml/palettize.py --builds g8 g16 pt [--windows 5s 10s 20s 35s] [--device mps]
 coreml/placement.py:4:  ~/.venv-coreml/bin/python coreml/placement.py --variant faithful --precision fp16 [--windows 5s ...]
+coreml/stream_latency.py:4:  ~/.venv-coreml/bin/python coreml/stream_latency.py [--split dev-clean] [--limit N]
+coreml/stream_latency.py:19:(~/gemma_stt/decode/logprobs/<split>.npy, V1's PyTorch log-probs). Step j returns frames [4j-4, 4j),
+coreml/stream_latency.py:27:Outputs: ~/gemma_stt/coreml/stream/latency_<split>_<model>_<seg>_<timing>.{json,md,utts.jsonl}.
+coreml/stream_latency.py:45:V1_HYPS = {"dev-clean": Path.home() / "gemma_stt/decode/results/sweep_dev-clean_cbd_sp6_beam32_units-piece/hyps.jsonl",
+coreml/stream_latency.py:46:           "dev-other": Path.home() / "gemma_stt/decode/results/apply_dev-other_cbd_sp6_beam32_units-piece/hyps.jsonl"}
+coreml/stream_step.py:5:Plan: ~/gemma_stt/coreml/STREAMING_PLAN.md (sections 2, 3, 5). Call j (0-based, C = 4 L11 frames per
+coreml/stream_step.py:19:Packages: ~/gemma_stt/coreml/models/stream/<variant>_<precision>/v1_step_<mech>.mlpackage (+ a
+coreml/stream_step.py:22:  ~/.venv-coreml/bin/python coreml/stream_step.py spec                    # state table from the config
+coreml/stream_step.py:23:  ~/.venv-coreml/bin/python coreml/stream_step.py export --mech state io  # convert + compile
+coreml/stream_step.py:24:  ~/.venv-coreml/bin/python coreml/stream_step.py check-torch [--n 200]   # fp32 StepTorch vs offline
+coreml/stream_step.py:25:  ~/.venv-coreml/bin/python coreml/stream_step.py placement --mech state io
+coreml/stream_step.py:26:  ~/.venv-coreml/bin/python coreml/stream_step.py bench --mech state      # idle machine only (SLOT)
 coreml/summary.py:2:"""Summarize ~/gemma_stt/coreml/results.jsonl into ~/gemma_stt/coreml/summary.md: one section per
 coreml/summary.py:5:  ~/.venv-coreml/bin/python coreml/summary.py
 coreml/tests/conftest.py:5:~/gemma_stt/coreml/results.jsonl with the run id, versions, model weight hashes and git commit.
@@ -264,6 +286,20 @@ decode/tune.py:26:LOGPROBS = Path.home() / "gemma_stt/decode/logprobs"
 decode/tune.py:71:PYTHONS = {"cbd": Path.home() / ".venv-gemma-stt/bin/python",
 decode/tune.py:72:           "pyctc": Path.home() / ".venv-pyctcdecode/bin/python",
 decode/tune.py:73:           "subword": Path.home() / ".venv-pyctcdecode/bin/python"}
+demo/README.md:22:P=~/.venv-gemma-stt/bin/python
+demo/README.md:85:Folder: `~/gemma_stt/embed/demo/folder/<spk>/<chap>/<id>.flac` holds **symlinks** into
+demo/README.md:86:`~/gemma_stt/data/LibriSpeech/dev-clean` (no copies). There is one utterance from each of 40 chapters:
+demo/README.md:91:The ids and reference sentences are in `~/gemma_stt/embed/demo/folder_refs.json`. Outputs are in
+demo/README.md:92:`~/gemma_stt/embed/demo/` (`transcribe_out/`, `index.npz`, `search_examples.txt`). Logs are in
+demo/README.md:93:`~/gemma_stt/logs/EmbedDemo_*.log`.
+demo/README.md:113:3 file(s) -> ~/gemma_stt/embed/demo/transcribe_out/<name>.{txt,npy,json}
+demo/README.md:119:$ $P demo/embed_and_transcribe.py index ~/gemma_stt/embed/demo/folder --db ~/gemma_stt/embed/demo/index.npz
+demo/README.md:120:~/gemma_stt/embed/demo/folder: 40 audio file(s): 40 to embed, 0 unchanged, 0 removed from index      (stderr)
+demo/README.md:124:index   ~/gemma_stt/embed/demo/index.npz
+demo/README.md:125:folder  ~/gemma_stt/embed/demo/folder
+demo/README.md:152:      "a woman pricked her finger on a spindle" --db ~/gemma_stt/embed/demo/index.npz -k 5
+demo/README.md:153:index: ~/gemma_stt/embed/demo/index.npz  (40 files, 768-d, query prefix 'task: search result | query: ')
+demo/README.md:196:- Sanity check (`~/gemma_stt/logs/EmbedDemo_refquery_check.log`): each file's LibriSpeech reference
 demo/embed_and_transcribe.py:11:Run with V1's environment:  ~/.venv-gemma-stt/bin/python demo/embed_and_transcribe.py ...
 demo/embed_and_transcribe.py:174:    home = str(Path.home())
 diag.py:10:  python diag.py --feats ~/gemma_stt/feats/probe
@@ -272,6 +308,8 @@ download_librispeech_hf.py:11:  python download_librispeech_hf.py ~/gemma_stt/da
 embed/check_reference.py:18:Writes ~/gemma_stt/embed/check_ids.json, check_reference.json, check_reference_clips.jsonl.
 embed/check_reference.py:35:OUT = Path.home() / "gemma_stt/embed"
 embed/check_reference.py:36:V1_HYPS = Path.home() / "gemma_stt/decode/results/sweep_dev-clean_cbd_sp6_beam32_units-piece/hyps.jsonl"
+embed/cost.py:4:  ~/.venv-gemma-stt/bin/python embed/cost.py [--n 100] [--warmup 5] [--out ~/gemma_stt/embed/cost.json]
+embed/cost.py:94:    ap.add_argument("--out", default=str(Path.home() / "gemma_stt/embed/cost.json"))
 embed/onepass.py:4:  ~/.venv-gemma-stt/bin/python embed/onepass.py AUDIO [AUDIO ...]        # prints text + embedding head
 embed/onepass.py:13:    .encode(audio)` returns (see ~/gemma_stt/embed/REPORT_core.md for the code references).
 embed/retrieval.py:3:python embed/retrieval.py  -> ~/gemma_stt/embed/retrieval/ + ~/gemma_stt/embed/REPORT_retrieval.md
@@ -297,48 +335,27 @@ watch.py:192:                    help="log file, or a directory to follow its ne
 
 </details>
 
-**In progress when this was written** (uncommitted work of other sessions: `coreml/LIVE.md`, `coreml/live.py`, `coreml/livecore.py`, `coreml/palettize.py`, `demo/`, `embed/`; not covered by the patch, so re-run the grep after they land):
+**Data-root defaults in files the patch does not cover** (newer work: the embedding one-pass, streaming and live runners). They should read `GEMMA_STT_HOME` the same way; re-run the grep once they are final:
 
-- `coreml/LIVE.md:9`: `Everything is in `~/.venv-coreml`. The app needs one extra package, `sounddevice` (its macOS wheel`
-- `coreml/LIVE.md:11`: `Versions added to the env are listed in `~/gemma_stt/coreml/VERSIONS_ADDED.md`.`
-- `coreml/LIVE.md:14`: `~/.venv-coreml/bin/pip install sounddevice==0.5.6`
-- `coreml/LIVE.md:15`: `~/.venv-coreml/bin/python -c "import sounddevice, kenlm; print(sounddevice.__version__)"`
-- `coreml/LIVE.md:22`: `From the repo root (`~/emb_gemma2`):`
-- `coreml/LIVE.md:26`: `~/.venv-coreml/bin/python coreml/live.py`
-- `coreml/LIVE.md:29`: `~/.venv-coreml/bin/python coreml/live.py --mode A --device "MacBook Pro Microphone"`
-- `coreml/LIVE.md:30`: `~/.venv-coreml/bin/python coreml/live.py --list-devices`
-- `coreml/LIVE.md:33`: `~/.venv-coreml/bin/python coreml/live.py --mode C --replay ~/gemma_stt/coreml/live_sessions/dev-clean_6345-93306_0021-0025.flac`
-- `coreml/LIVE.md:36`: `~/.venv-coreml/bin/python coreml/live.py --replay FILE --fast --exit-at-end --session ~/gemma_stt/coreml/live_sessions/try1`
-- `coreml/LIVE.md:69`: `| `c` | save the transcript to `~/gemma_stt/coreml/live_sessions/transcript-YYYYMMDD-HHMMSS.txt` (or the `--session` folder) and copy it to the clipboard |`
-- `coreml/LIVE.md:149`: `| Mode C ends with `engine stopped: ModuleNotFoundError: No module named 'kenlm'` | The LM fusion decoder needs `kenlm` in `~/.venv-coreml`; mode A works without it. |`
-- `coreml/LIVE.md:175`: `script -q ~/gemma_stt/coreml/live_sessions/take1.ansi \`
-- `coreml/LIVE.md:176`: `~/.venv-coreml/bin/python coreml/live.py --mode C --replay FILE --exit-at-end \`
-- `coreml/LIVE.md:177`: `--session ~/gemma_stt/coreml/live_sessions/take1`
-- `coreml/LIVE.md:185`: `Sample sessions are in `~/gemma_stt/coreml/live_sessions/`:`
-- `coreml/live.py:5`: `~/.venv-coreml/bin/python coreml/live.py [--mode A|C] [--device NAME|INDEX]`
-- `coreml/live.py:6`: `~/.venv-coreml/bin/python coreml/live.py --mode C --replay FILE [--fast] [--exit-at-end]`
-- `coreml/live.py:34`: `SESSIONS = Path.home() / "gemma_stt/coreml/live_sessions"`
-- `coreml/live.py:713`: `home = str(Path.home())`
-- `coreml/palettize.py:4`: `~/.venv-coreml/bin/python coreml/palettize.py --builds g8 g16 pt [--windows 5s 10s 20s 35s] [--device mps]`
-- `demo/embed_and_transcribe.py:11`: `Run with V1's environment:  ~/.venv-gemma-stt/bin/python demo/embed_and_transcribe.py ...`
-- `demo/embed_and_transcribe.py:174`: `home = str(Path.home())`
-- `embed/check_reference.py:18`: `Writes ~/gemma_stt/embed/check_ids.json, check_reference.json, check_reference_clips.jsonl.`
-- `embed/check_reference.py:35`: `OUT = Path.home() / "gemma_stt/embed"`
-- `embed/check_reference.py:36`: `V1_HYPS = Path.home() / "gemma_stt/decode/results/sweep_dev-clean_cbd_sp6_beam32_units-piece/hyps.jsonl"`
-- `embed/onepass.py:4`: `~/.venv-gemma-stt/bin/python embed/onepass.py AUDIO [AUDIO ...]        # prints text + embedding head`
-- `embed/onepass.py:13`: `.encode(audio)` returns (see ~/gemma_stt/embed/REPORT_core.md for the code references).`
-- `embed/retrieval.py:3`: `python embed/retrieval.py  -> ~/gemma_stt/embed/retrieval/ + ~/gemma_stt/embed/REPORT_retrieval.md`
-- `embed/retrieval.py:12`: `G = Path.home() / "gemma_stt"`
-- `embed/retrieval.py:132`: `"Reproduce: `~/.venv-gemma-stt/bin/python embed/retrieval.py`."]`
+| file:line | code |
+|---|---|
+| `coreml/live.py:34` | `SESSIONS = Path.home() / "gemma_stt/coreml/live_sessions"` |
+| `coreml/live_latency.py:80` | `V1_HYPS = {s: Path.home() / f"gemma_stt/decode/results/{p}_{s}_cbd_sp6_beam32_units-piece/hyps.jsonl"` |
+| `coreml/stream_latency.py:45` | `V1_HYPS = {"dev-clean": Path.home() / "gemma_stt/decode/results/sweep_dev-clean_cbd_sp6_beam32_units-piece/hyps.jsonl",` |
+| `coreml/stream_latency.py:46` | `"dev-other": Path.home() / "gemma_stt/decode/results/apply_dev-other_cbd_sp6_beam32_units-piece/hyps.jsonl"}` |
+| `embed/check_reference.py:35` | `OUT = Path.home() / "gemma_stt/embed"` |
+| `embed/check_reference.py:36` | `V1_HYPS = Path.home() / "gemma_stt/decode/results/sweep_dev-clean_cbd_sp6_beam32_units-piece/hyps.jsonl"` |
+| `embed/cost.py:94` | `ap.add_argument("--out", default=str(Path.home() / "gemma_stt/embed/cost.json"))` |
+| `embed/retrieval.py:12` | `G = Path.home() / "gemma_stt"` |
 
-The data-root lines among them (`Path.home() / "gemma_stt"...`) should use `GEMMA_STT_HOME` the same way.
+`coreml/live.py:716` and `demo/embed_and_transcribe.py:174` (`home = str(Path.home())`) only shorten printed paths; keep them.
 
 **Embedded paths in V1 artifacts** (found by the release script's scan):
-- `spm_unigram256.model`: SentencePiece stores its `model_prefix`,
+- `spm_unigram256.model` (released): SentencePiece stores its `model_prefix`,
   `/Users/<you>/gemma_stt/feats/full/spm_unigram256`, in the trainer spec.
-- `head_F0-0-0-4c.pt`: contains the same path, from the checkpoint's tokenizer reference.
+- `head_F0-0-0-4c.pt` (not released; the head is inside the Core ML package): contains the same path.
 - Both only reveal the user name. Changing them changes the sha256 locked in `V1.md` and checked
-  by `coreml/common.check_v1_files`. Either ship them as they are (recommended: V1 stays
+  by `coreml/common.check_v1_files`. Either ship the tokenizer as it is (recommended: V1 stays
   byte-identical) or accept a new hash.
 
 **Proposed fix: one configurable data root, `GEMMA_STT_HOME`** (default `~/gemma_stt`).
@@ -684,11 +701,12 @@ git grep -n -I '/Users/' docs/      # must print nothing before committing
   paths (15 / 3 / 3 mentions). They are fine as a description of the data-root layout.
 - **Do not copy:** `coreml/models/export_log.jsonl` (21 `/Users/<you>` paths), `coreml/results.jsonl`
   (1 such path), logs, and the `runs/*.sh` scripts (one of them reads the webhook).
-- **Not copied yet:** add Phase 4 (palettization) and the embedding/retrieval reports once they exist.
+- **Also worth copying once final:** `~/gemma_stt/coreml/models/release/fp16/release_check.json` (the release package's
+  verification against its source windows) and the embedding / streaming reports.
 
 ### A.5 Git identity and authorship
 
-All 6 commits have author and committer `gemma-stt <gemma-stt@localhost>`. No `user.name` /
+All 9 commits have author and committer `gemma-stt <gemma-stt@localhost>`. No `user.name` /
 `user.email` is configured (`git config --get user.name` prints nothing).
 
 ```bash
@@ -749,49 +767,64 @@ Make the repo public once the README, LICENSE and the A.2 checks are done. Then 
 
 ## B. Hugging Face (model repo)
 
+The release is **V1 only, as one Core ML package**:
+- `v1.mlpackage`: fp16, multifunction (`win_5s`, `win_10s` default, `win_20s`, `win_35s`) with
+  shared weights, built from the fp16-safe variant by `coreml/export_release.py`. It needs macOS 15 /
+  iOS 18 and runs under `CPU_AND_NE` (recommended), `CPU_AND_GPU` and `CPU_ONLY`.
+- The tokenizer, the subword 6-gram LM, `config.json` (pinned decoder settings, windows → functions,
+  front end, minimum OS), `LICENSE`, `NOTICE`, `README.md` (model card) and `SHA256SUMS`.
+- The per-window packages and the fp32 build are internal references and are not released.
+
 ### B.1 Build the folder
+
+Prerequisites (the script lists every missing one; `--write` refuses while any is missing):
+1. **The package:** `~/gemma_stt/coreml/models/release/fp16/v1.mlpackage`, from
+   `~/.venv-coreml/bin/python coreml/export_release.py`. The script checks its functions, default
+   function, shapes and metadata (V1 hashes, decoder settings).
+2. **Its own test results** in `~/gemma_stt/coreml/results.jsonl`: rows with `variant == "release"`
+   whose `model_weight_sha256` is this package's `weight.bin`.
+   - **T9** (dev WER) and **T10** (speed / WER / RSS / load under `CPU_AND_NE`, `CPU_AND_GPU` and
+     `CPU_ONLY`) are required and must have passed:
+     `cd ~/emb_gemma2 && V1_VARIANT=release V1_PRECISION=fp16 make test-full` (T10 needs an idle Mac).
+   - **T11** (test sets next to V1 and Phonon-2: `make test-release` with the same variables) and T6
+     (Neural Engine share, `make test-fast`) are added to the card when present.
+   - The card shows no other numbers; there is nothing to fill in by hand.
+3. `--hf-user`, `--author` and `--github-url` set (no placeholders).
 
 ```bash
 cd ~/emb_gemma2
 PY=~/.venv-coreml/bin/python
-# 1. dry run (default): layout, sizes, sha256, secret scan; writes nothing
-$PY release/make_hf_release.py --hf-user YOUR_HF_USER --author "Your Name" \
-    --github-url https://github.com/YOUR_GITHUB_USER/emb_gemma2 [--include-pytorch-head] [--include-fp32]
-# preview the generated README.md / config.json / NOTICE / lm/README.md
-$PY release/make_hf_release.py --no-hash --preview --hf-user YOUR_HF_USER | less
+ARGS=(--hf-user YOUR_HF_USER --author "Your Name" --github-url https://github.com/YOUR_GITHUB_USER/emb_gemma2)
+# 1. dry run (default): layout, sizes, sha256, secret scan, missing prerequisites; writes nothing
+$PY release/make_hf_release.py "${ARGS[@]}"
+# preview the generated README.md / config.json / NOTICE
+$PY release/make_hf_release.py "${ARGS[@]}" --no-hash --preview | less
 # 2. write it (default ~/gemma_stt/release/hf/<repo-name>/; refuses to overwrite)
-$PY release/make_hf_release.py --write --hf-user YOUR_HF_USER --author "Your Name" \
-    --github-url https://github.com/YOUR_GITHUB_USER/emb_gemma2 [--include-pytorch-head] [--include-fp32]
+$PY release/make_hf_release.py "${ARGS[@]}" --write
 cd ~/gemma_stt/release/hf/gemma-stt-v1-coreml && shasum -a 256 -c SHA256SUMS
 ```
 
-- **Other builds:** `--build <variant>/<precision>` selects another build, for example a Phase 4
-  palettized `faithful/fp16_pal6_g16`.
-- **Results in the README:** the card takes the T9 / T10 / T11 tables from
-  `~/gemma_stt/coreml/results.jsonl` for exactly that build. Run `make test-full` (and
-  `make test-release`) for it first, with `V1_VARIANT` / `V1_PRECISION` set. Otherwise the card
-  says the result is missing.
-- **`transcribe.py` and the head:** the repo's `coreml/transcribe.py` checks the PyTorch head's
-  sha256, so users of the GitHub code need the head. `--include-pytorch-head` (53 MB) makes the HF
-  repo self-sufficient for that.
+- **Another license:** `--license <hf-id> --license-file <file>`; see the decisions at the top.
+- **`transcribe.py` in the code repo** checks the sha256 of the PyTorch head as well
+  (`coreml/common.check_v1_files`). The head is not part of the HF release, so the repo's runner
+  needs your local `~/gemma_stt/runs/full_160ms/head_F0-0-0-4c.pt`. The card's standalone usage
+  example needs only the HF files.
 
 ### B.2 Expected size
 
-Measured by the dry run on 2026-10-14:
+Measured by the dry run on 2026-10-14 against the package built that day (a rebuild can change it):
 
-| Contents | Size | Files |
-|---|---|---|
-| `faithful/fp16` build (4 windows) | 2.5 GB (609–635 MB `weight.bin` each) | 12 |
-| `lm/sp256_6gram.bin` | 761.7 MB | 1 |
-| tokenizer, configs, README, NOTICE, SHA256SUMS | ~0.27 MB | 7 |
-| **default total** | **3.2 GB** | 20 |
-| `--include-pytorch-head` | +53.2 MB | +1 |
-| `--include-fp32` (`coreml_fp32/`) | +4.9 GB (~1.2 GB per window) | +12 |
-| everything | 8.2 GB | 32 |
+| Path | Size |
+|---|---|
+| `v1.mlpackage/` (`weight.bin` 646.9 MB, `model.mlmodel` 5.7 MB, `Manifest.json`) | 652.6 MB |
+| `sp256_6gram.bin` | 761.7 MB |
+| `spm_unigram256.model` | 243.6 KB |
+| `LICENSE`, `config.json`, `NOTICE`, `README.md`, `SHA256SUMS` | ~32 KB |
+| **total** | **1.4 GB in 10 files** |
 
+- The four functions share one `weight.bin`. That is 646.9 MB, against 2.5 GB for four separate
+  window packages.
 - The largest single file is the 762 MB LM, well under the Hub's per-file limit.
-- A 6-bit palettized build should shrink the 4 windows by roughly 6/16 [INFERENCE]. Run the dry run
-  with its `--build` to get the real figure.
 
 ### B.3 Upload
 
@@ -800,8 +833,8 @@ PY=~/.venv-coreml/bin   # huggingface_hub 2.2.0 with the `hf` CLI and hf-xet 1.7
 $PY/hf auth login                                   # a token with write access
 $PY/hf repos create YOUR_HF_USER/gemma-stt-v1-coreml --private
 $PY/hf upload YOUR_HF_USER/gemma-stt-v1-coreml ~/gemma_stt/release/hf/gemma-stt-v1-coreml . \
-    --commit-message "V1 Core ML (faithful/fp16), tokenizer, subword 6-gram LM"
-# after checking the page renders (model card, files, license), make it public in Settings (or keep it gated)
+    --commit-message "V1: Core ML package (fp16, multifunction), tokenizer, subword 6-gram LM"
+# after checking the page renders (model card, files, license), make it public in Settings
 ```
 
 - **Resuming:** `hf upload` splits big folders into several commits. If it is interrupted, re-run
@@ -815,17 +848,16 @@ $PY/hf upload YOUR_HF_USER/gemma-stt-v1-coreml ~/gemma_stt/release/hf/gemma-stt-
 - **Xet storage:** new Hub repos store large files with Xet. `hf upload` (with `hf-xet` installed,
   as in `~/.venv-coreml`) chunks and deduplicates them, so you need neither `git` nor `git-lfs`.
   `git-lfs` is not installed on this Mac.
-- **`.mlpackage` directories:** a `.mlpackage` is a plain directory: `Manifest.json` plus
+- **The `.mlpackage` directory:** `v1.mlpackage` is a plain directory: `Manifest.json` plus
   `Data/com.apple.CoreML/{model.mlmodel,weights/weight.bin}`. It uploads as ordinary files.
-  Keep the directory structure: Core ML loads the directory, and `snapshot_download` recreates it.
+  Keep the structure: Core ML loads the directory, and `snapshot_download` recreates it.
 - **If you push with git:** large files must be tracked by LFS.
   - `git lfs install`, then `git clone https://huggingface.co/YOUR_HF_USER/gemma-stt-v1-coreml`.
-  - Check that the repo's `.gitattributes` has `*.bin`, `*.mlmodel`, `*.model` and `*.pt`. The
-    Hub's default `.gitattributes` covers these; add any missing pattern with `git lfs track "<pattern>"`.
+  - Check that the repo's `.gitattributes` has `*.bin`, `*.mlmodel` and `*.model`. The Hub's default
+    `.gitattributes` covers these; add any missing pattern with `git lfs track "<pattern>"`.
   - Copy the folder in, then `git add . && git commit && git push`.
-  - `weight.bin` (~0.6 GB, or 1.2 GB for fp32) and `sp256_6gram.bin` go through LFS; `Manifest.json`
-    and the text files stay in git.
-- **Not uploaded:** `.DS_Store` files inside packages are skipped by the release script.
-  `config.json` has no `model_type`, so `transformers` does not try to load this repo as a
-  transformers model. `AutoFeatureExtractor.from_pretrained(<folder>)` works: it reads
-  `preprocessor_config.json`, and its output matches `coreml/common.mel` exactly.
+  - `weight.bin` and `sp256_6gram.bin` go through LFS; `Manifest.json` and the text files stay in git.
+- **Skipped and not needed:** `.DS_Store` files inside the package are skipped by the release script.
+  `config.json` has no `model_type`, so `transformers` does not try to load the repo as a model.
+  The feature extractor is rebuilt from the copy of `preprocessor_config.json` embedded in
+  `config.json`; that output matches `coreml/common.mel` exactly.

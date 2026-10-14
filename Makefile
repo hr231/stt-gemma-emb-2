@@ -1,5 +1,6 @@
 # Core ML test suite for V1 (see coreml/tests). The build under test is chosen with
-# V1_VARIANT / V1_PRECISION / V1_COMPUTE_UNITS (defaults: faithful / fp16 / CPU_AND_NE).
+# V1_VARIANT / V1_PRECISION / V1_COMPUTE_UNITS (defaults: release / fp16 / CPU_AND_NE; release is the one
+# multifunction package built by coreml/export_release.py, faithful / fp16safe the internal per-window builds).
 #   make test-fast      T1-T8 on FAST, < 10 min
 #   make test-full      T9 (dev-clean + dev-other WER vs V1) and T10 (speed; needs an idle Mac)
 #   make test-release   T11 (test-clean + test-other once, next to V1 PyTorch and Phonon-2)

@@ -90,12 +90,13 @@ def run_all(configs=CONFIGS, variant="faithful", limit=0, keep_cache=False):
     load = subprocess.run(["uptime"], capture_output=True, text=True).stdout.strip()
     runs = []
     for c in configs:
-        precision, units = c.split(":")
-        r = run_child(variant, precision, units, limit, False)
+        build, units = c.split(":")
+        v, precision = build.split("/") if "/" in build else (variant, build)
+        r = run_child(v, precision, units, limit, False)
         r["cold_load_s"] = r.pop("load_s") if moved else None
-        r["warm_load_s"] = run_child(variant, precision, units, limit, True)["load_s"]
+        r["warm_load_s"] = run_child(v, precision, units, limit, True)["load_s"]
         runs.append(r)
-        print(f"[bench] {precision} {units}: e2e {r['rtfx_e2e']:.1f}x | encoder+head {r['rtfx_model']:.1f}x | decoder "
+        print(f"[bench] {v}/{precision} {units}: e2e {r['rtfx_e2e']:.1f}x | encoder+head {r['rtfx_model']:.1f}x | decoder "
               f"{r['rtfx_decoder']:.0f}x | WER {100 * r['wer']:.3f}% | RSS {r['peak_rss_mb']:.0f} MB | load cold "
               f"{r['cold_load_s']} warm {r['warm_load_s']:.2f} s", flush=True)
     res = {"time": stamp, "uptime_before": load, "uptime_after": subprocess.run(["uptime"], capture_output=True,
@@ -110,7 +111,7 @@ def run_all(configs=CONFIGS, variant="faithful", limit=0, keep_cache=False):
              "| build | compute units | end-to-end RTFx | encoder+head RTFx | decoder RTFx | mel RTFx | WER % | peak RSS MB | "
              "cold load s | warm load s |", "|---|---|---|---|---|---|---|---|---|---|"]
     for r in runs:
-        lines.append(f"| {r['precision']} | {r['compute_units']} | {r['rtfx_e2e']:.1f} | {r['rtfx_model']:.1f} | "
+        lines.append(f"| {r['variant']}/{r['precision']} | {r['compute_units']} | {r['rtfx_e2e']:.1f} | {r['rtfx_model']:.1f} | "
                      f"{r['rtfx_decoder']:.0f} | {r['rtfx_mel']:.0f} | {100 * r['wer']:.3f} | {r['peak_rss_mb']:.0f} | "
                      f"{r['cold_load_s'] if r['cold_load_s'] is None else round(r['cold_load_s'], 1)} | {r['warm_load_s']:.2f} |")
     lines += ["", f"V1 (PyTorch pipeline) dev-clean WER {100 * V1_WER['dev-clean']:.3f} %. Load: `{load}`."]

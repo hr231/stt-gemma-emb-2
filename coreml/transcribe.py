@@ -18,7 +18,7 @@ import time
 import numpy as np
 
 from cmlrun import V1CoreML
-from common import WINDOWS, beam_decoder, check_v1_files, greedy_text, load_audio, mel, norm_text
+from common import LM, SPM, WINDOWS, beam_decoder, check_v1_files, greedy_text, load_audio, mel, norm_text
 
 MAX_MEL = max(WINDOWS.values())
 CONTEXT_MEL = 200                   # 2 s of left context = 50 output frames
@@ -49,8 +49,8 @@ def plan_segments(m, max_mel=MAX_MEL, context=CONTEXT_MEL, search=SEARCH_MEL):
 
 
 class Transcriber:
-    def __init__(self, variant="faithful", precision="fp16", compute_units="CPU_AND_NE", cml=None):
-        check_v1_files()
+    def __init__(self, variant="release", precision="fp16", compute_units="CPU_AND_NE", cml=None):
+        check_v1_files(SPM, LM)      # the decoder's files; the head runs inside the Core ML package
         t0 = time.time()
         self.cml = cml if cml is not None else V1CoreML(variant, precision, compute_units)
         self.decoder = beam_decoder()
@@ -82,7 +82,7 @@ class Transcriber:
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("audio", nargs="+")
-    ap.add_argument("--variant", default="faithful")
+    ap.add_argument("--variant", default="release")
     ap.add_argument("--precision", default="fp16")
     ap.add_argument("--compute-units", default="CPU_AND_NE")
     ap.add_argument("--greedy", action="store_true", help="greedy CTC instead of beam + LM")

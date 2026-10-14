@@ -16,7 +16,7 @@ from pathlib import Path
 import coremltools as ct
 from coremltools.models.compute_plan import MLComputePlan
 
-from cmlrun import package
+from cmlrun import RELEASE, function_name, package
 from common import OUT, WINDOWS
 
 
@@ -25,11 +25,21 @@ def device_name(d):
     return {"MLNeuralEngineComputeDevice": "ANE", "MLGPUComputeDevice": "GPU", "MLCPUComputeDevice": "CPU"}.get(n, n)
 
 
-def plan_for(path, compute_units="CPU_AND_NE"):
+def plan_for(path, compute_units="CPU_AND_NE", function="main"):
+    """Per-op device and cost for one function of a package ("main", or win_<window> of the release)."""
     tmp = Path(tempfile.mkdtemp(prefix="v1plan_"))
-    compiled = ct.utils.compile_model(str(path), str(tmp / (Path(path).stem + ".mlmodelc")))
+    src = Path(path)
+    if function != "main":
+        # MLComputePlan.load_from_path has no function parameter: it plans only the default function of a
+        # multifunction package and reports no device for the others. Plan a copy whose default is `function`.
+        m = ct.models.MLModel(str(src), skip_model_load=True)
+        spec = m.get_spec()
+        spec.description.defaultFunctionName = function
+        src = tmp / f"{src.stem}_{function}.mlpackage"
+        ct.models.MLModel(spec, weights_dir=m.weights_dir, skip_model_load=True).save(str(src))
+    compiled = ct.utils.compile_model(str(src), str(tmp / (src.stem + ".mlmodelc")))
     plan = MLComputePlan.load_from_path(path=str(compiled), compute_units=getattr(ct.ComputeUnit, compute_units))
-    main = plan.model_structure.program.functions["main"]
+    main = plan.model_structure.program.functions[function]
     rows = []
     for op in main.block.operations:
         usage = plan.get_compute_device_usage_for_mlprogram_operation(op)
@@ -62,7 +72,8 @@ def main():
     args = ap.parse_args()
     out = {}
     for w in args.windows:
-        s = summarize(plan_for(package(args.variant, args.precision, w), args.compute_units))
+        fn = function_name(w) if args.variant == RELEASE else "main"
+        s = summarize(plan_for(package(args.variant, args.precision, w), args.compute_units, fn))
         out[w] = s
         types = collections.Counter((r["type"], r["device"]) for r in s["not_on_ane"])
         print(f"[placement] {args.variant}/{args.precision} {w}: {s['ops']} ops, ANE share of estimated cost "

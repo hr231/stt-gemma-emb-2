@@ -37,14 +37,22 @@ def test_t9_wer_vs_v1(cml, record):
 def test_t10_speed(record):
     """RTFx (audio duration / processing time, model load excluded, after warm-up) over full dev-clean:
     this build's encoder+head under CPU_AND_NE, CPU_AND_GPU and CPU_ONLY with the decoder separately and
-    end to end, plus the exact fp32 build under CPU_AND_GPU (same method as the Phonon-2 harness);
-    WER, peak RSS, cold / warm load. Needs an otherwise idle Mac."""
+    end to end, plus the internal fp32 reference build (faithful/fp32) under CPU_AND_GPU (same method as
+    the Phonon-2 harness); WER, peak RSS, cold / warm load. Needs an otherwise idle Mac.
+    For the release build it is also a correctness gate: dev-clean beam+LM WER within 0.1 points of V1
+    under every compute unit (the release must run correctly on CPU_ONLY and CPU_AND_GPU too)."""
     import bench
-    configs = [f"{PRECISION}:CPU_AND_NE", f"{PRECISION}:CPU_AND_GPU", f"{PRECISION}:CPU_ONLY"]
+    from cmlrun import RELEASE
+    build = f"{VARIANT}/{PRECISION}"
+    configs = [f"{build}:CPU_AND_NE", f"{build}:CPU_AND_GPU", f"{build}:CPU_ONLY"]
     if not PALETTIZED:
-        configs.append("fp32:CPU_AND_GPU")
+        configs.append("faithful/fp32:CPU_AND_GPU")
     res = bench.run_all(configs, VARIANT)
     ok = [r for r in res["runs"] if all(math.isfinite(r[k]) and r[k] > 0 for k in ("rtfx_e2e", "rtfx_model", "rtfx_decoder"))]
     passed = len(ok) == len(configs)
+    if VARIANT == RELEASE:
+        res["release_wer_diff_points"] = {r["compute_units"]: 100 * (r["wer"] - V1_WER["dev-clean"])
+                                          for r in res["runs"] if r["variant"] == VARIANT}
+        passed &= all(abs(d) <= 0.1 for d in res["release_wer_diff_points"].values())
     record(res, passed)
     assert passed, res

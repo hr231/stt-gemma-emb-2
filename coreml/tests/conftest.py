@@ -1,6 +1,7 @@
 """Fixtures for the V1 Core ML test suite (markers fast / full / release, see pytest.ini).
 
-Model under test: V1_VARIANT (default faithful), V1_PRECISION (fp16), V1_COMPUTE_UNITS (CPU_AND_NE).
+Model under test: V1_VARIANT (default release: the one multifunction package; faithful / fp16safe are the
+internal per-window builds), V1_PRECISION (fp16), V1_COMPUTE_UNITS (CPU_AND_NE).
 Every test calls `record(metrics, passed)` before asserting: one JSON line per test in
 ~/gemma_stt/coreml/results.jsonl with the run id, versions, model weight hashes and git commit.
 """
@@ -20,7 +21,7 @@ sys.path.insert(0, str(HERE.parent))
 from cmlrun import V1CoreML, load_reference, package, ref_slices  # noqa: E402
 from common import OUT, WINDOWS, sha256  # noqa: E402
 
-VARIANT = os.environ.get("V1_VARIANT", "faithful")
+VARIANT = os.environ.get("V1_VARIANT", "release")
 PRECISION = os.environ.get("V1_PRECISION", "fp16")
 UNITS = os.environ.get("V1_COMPUTE_UNITS", "CPU_AND_NE")
 RUN_ID = os.environ.get("V1_RUN_ID", time.strftime("%Y%m%d-%H%M%S"))
@@ -35,7 +36,9 @@ def _git():
 
 @pytest.fixture(scope="session")
 def meta():
-    weights = {w: sha256(package(VARIANT, PRECISION, w) / "Data/com.apple.CoreML/weights/weight.bin") for w in WINDOWS}
+    pkgs = {w: package(VARIANT, PRECISION, w) for w in WINDOWS}       # the release: one package for all windows
+    sums = {p: sha256(p / "Data/com.apple.CoreML/weights/weight.bin") for p in set(pkgs.values())}
+    weights = {w: sums[p] for w, p in pkgs.items()}
     return {"run": RUN_ID, "variant": VARIANT, "precision": PRECISION, "compute_units": UNITS, "git": _git(),
             "versions": {p: md.version(p) for p in ("coremltools", "torch", "transformers", "numpy", "ctc-beam-decoder")},
             "model_weight_sha256": weights}

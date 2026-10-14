@@ -50,9 +50,10 @@ def sha256(path, chunk=1 << 22):
     return h.hexdigest()
 
 
-def check_v1_files():
-    """V1 files must be byte-identical to V1.md."""
-    for p, want in V1_SHA256.items():
+def check_v1_files(*paths):
+    """The given V1 files (default: all of them) must be byte-identical to V1.md."""
+    for p in paths or V1_SHA256:
+        want = V1_SHA256[p]
         got = sha256(p)
         if got != want:
             raise SystemExit(f"{p}: sha256 {got} != V1 {want}")

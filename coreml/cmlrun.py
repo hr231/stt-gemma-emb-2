@@ -17,9 +17,18 @@ from common import OUT, WINDOWS
 
 COMPUTE_UNITS = ("CPU_AND_NE", "CPU_AND_GPU", "CPU_ONLY", "ALL")
 COMPILED = OUT / "compiled"
+RELEASE = "release"     # the released build: ONE multifunction package, one function per window
 
 
-def package(variant, precision, window):
+def function_name(window):
+    """Function of the release package for a window: win_5s, win_10s, ... (no '.': the ANE compiler rejects it)."""
+    return f"win_{window}"
+
+
+def package(variant, precision, window=None):
+    """Package file: the release multifunction package, or an internal per-window package."""
+    if variant == RELEASE:
+        return OUT / "models" / RELEASE / precision / "v1.mlpackage"
     return OUT / "models" / variant / precision / f"v1_{window}.mlpackage"
 
 
@@ -30,21 +39,22 @@ def _package_key(src):
                                     for f in files).encode()).hexdigest()
 
 
-def compiled_path(variant, precision, window):
+def compiled_path(variant, precision, window=None):
     """Persistent compiled model for a package; recompiled (old copy moved aside) when the package changes."""
     import coremltools as ct
     src = package(variant, precision, window)
-    dst = COMPILED / variant / precision / f"v1_{window}.mlmodelc"
-    stamp = dst.parent / f"v1_{window}.source"
+    name = src.stem
+    dst = COMPILED / variant / precision / f"{name}.mlmodelc"
+    stamp = dst.parent / f"{name}.source"
     dst.parent.mkdir(parents=True, exist_ok=True)
     key = _package_key(src)
-    with open(dst.parent / f".v1_{window}.lock", "w") as lock:
+    with open(dst.parent / f".{name}.lock", "w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         if dst.exists() and stamp.exists() and stamp.read_text() == key:
             return dst
         if dst.exists():
             dst.rename(dst.with_name(f"{dst.name}.old-{int(time.time())}"))
-        tmp = dst.with_name(f"v1_{window}.partial.mlmodelc")             # compile_model wants .mlmodelc
+        tmp = dst.with_name(f"{name}.partial.mlmodelc")                  # compile_model wants .mlmodelc
         if tmp.exists():
             tmp.rename(dst.with_name(f"{dst.name}.stale-{int(time.time())}"))
         ct.utils.compile_model(str(src), str(tmp))
@@ -66,8 +76,9 @@ class V1CoreML:
         self._inputs, self._lock = {}, threading.Lock()
         for w in windows or WINDOWS:
             t0 = time.time()
+            fn = {"function_name": function_name(w)} if variant == RELEASE else {}
             self.models[w] = ct.models.CompiledMLModel(str(compiled_path(variant, precision, w)),
-                                                       compute_units=getattr(ct.ComputeUnit, compute_units))
+                                                       compute_units=getattr(ct.ComputeUnit, compute_units), **fn)
             self.load_s[w] = time.time() - t0
             self._inputs[w] = (np.zeros((1, WINDOWS[w], 128), np.float32), np.zeros(1, np.int32))
 

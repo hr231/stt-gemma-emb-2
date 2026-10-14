@@ -137,9 +137,10 @@ def test_t5_padding_invariance(cml, fast_out, record):
 def test_t6_placement(window, record):
     """Share of the estimated cost on the Neural Engine (CPU_AND_NE) >= the share recorded at the first
     passing run of this variant / precision / window (regression guard)."""
-    from cmlrun import package
+    from cmlrun import RELEASE, function_name, package
     from placement import plan_for, summarize
-    s = summarize(plan_for(package(VARIANT, PRECISION, window), "CPU_AND_NE"))
+    fn = function_name(window) if VARIANT == RELEASE else "main"
+    s = summarize(plan_for(package(VARIANT, PRECISION, window), "CPU_AND_NE", fn))
     path = OUT / "placement_thresholds.json"
     thresholds = json.loads(path.read_text()) if path.exists() else {}
     key = f"{VARIANT}/{PRECISION}/{window}"
