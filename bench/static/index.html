@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>V1 · live bench</title>
+<style>
+  :root {
+    --bg: #fbfaf7; --fg: #1f1f1d; --muted: #8b8a85; --faint: #d9d7d0; --panel: #f3f1ec;
+    --accent: #b5651d; --ok: #3d7a4f; --bad: #b3412f;
+    --mono: ui-monospace, "SF Mono", Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  }
+  :root[data-theme="dark"] {
+    --bg: #18181a; --fg: #e4e2dc; --muted: #77766f; --faint: #333331; --panel: #202022;
+    --accent: #d9944f; --ok: #7fb58e; --bad: #e07a66;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #18181a; --fg: #e4e2dc; --muted: #77766f; --faint: #333331; --panel: #202022;
+      --accent: #d9944f; --ok: #7fb58e; --bad: #e07a66;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font-family: var(--sans); }
+  body { display: grid; grid-template-rows: auto 1fr auto; max-width: 980px; margin: 0 auto; padding: 0 28px; }
+  header { display: flex; align-items: center; gap: 18px; padding: 22px 0 18px; border-bottom: 1px solid var(--faint); }
+  .mark { font-family: var(--mono); font-size: 13px; letter-spacing: .04em; }
+  .mark b { font-weight: 600; }
+  .status { font-family: var(--mono); font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 7px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
+  .live .dot { background: var(--bad); }
+  .spacer { flex: 1; }
+  button, .seg label { font: 13px var(--sans); color: var(--fg); background: transparent; border: 1px solid var(--faint);
+    border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+  button:hover, .seg label:hover { border-color: var(--muted); }
+  button:disabled { opacity: .4; cursor: default; }
+  #rec { min-width: 92px; border-color: var(--fg); }
+  .live #rec { background: var(--fg); color: var(--bg); }
+  .seg { display: inline-flex; }
+  .seg input { display: none; }
+  .seg label { border-radius: 0; margin-left: -1px; color: var(--muted); }
+  .seg label:first-of-type { border-radius: 6px 0 0 6px; margin-left: 0; }
+  .seg label:last-of-type { border-radius: 0 6px 6px 0; }
+  .seg input:checked + label { color: var(--fg); border-color: var(--muted); position: relative; }
+  main { overflow-y: auto; padding: 34px 0 40px; }
+  #text { font-size: 23px; line-height: 1.62; max-width: 760px; min-height: 40vh; }
+  #text .w { cursor: default; border-radius: 3px; }
+  #text .w:hover { background: var(--panel); }
+  #text .t { color: var(--muted); }
+  #text .p { color: var(--muted); font-style: italic; }
+  #text .fixed { color: var(--accent); transition: color 1.8s ease; }
+  #text.lat .w[data-lat]::after { content: attr(data-lat); font: 10px var(--mono); color: var(--muted);
+    vertical-align: super; margin-left: 1px; }
+  .hint { color: var(--muted); font-size: 15px; line-height: 1.6; max-width: 560px; }
+  .hint code { font-family: var(--mono); font-size: 13px; }
+  footer { border-top: 1px solid var(--faint); padding: 12px 0 18px; display: flex; gap: 26px; align-items: baseline;
+    font-family: var(--mono); font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+  footer .v { color: var(--fg); font-size: 13px; }
+  .meter { width: 70px; height: 4px; background: var(--faint); border-radius: 2px; overflow: hidden; align-self: center; }
+  .meter i { display: block; height: 100%; width: 0; background: var(--muted); transition: width .12s linear; }
+  #msg { color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <span class="mark"><b>V1</b> live bench</span>
+  <span class="status" id="status"><span class="dot"></span><span id="state">connecting</span></span>
+  <span class="spacer"></span>
+  <span class="seg" title="A: beam + LM every step. C: fast greedy draft, beam + LM fix at each pause.">
+    <input type="radio" name="mode" id="mA" value="A" checked><label for="mA">Mode A</label>
+    <input type="radio" name="mode" id="mC" value="C"><label for="mC">Mode C</label>
+  </span>
+  <span class="seg" title="Language model (subword 6-gram) on or off. Off = greedy CTC.">
+    <input type="radio" name="lm" id="lmOn" value="1" checked><label for="lmOn">LM</label>
+    <input type="radio" name="lm" id="lmOff" value="0"><label for="lmOff">no LM</label>
+  </span>
+  <button id="rec" disabled>Start</button>
+</header>
+<main>
+  <div id="text"><p class="hint">Press <b>Start</b> and speak. Settled words appear in normal text; words still
+    forming are grey. Hover a settled word for its latency. The browser asks for the microphone once.</p></div>
+</main>
+<footer>
+  <span>latency median <span class="v" id="hMed">–</span></span>
+  <span>p90 <span class="v" id="hP90">–</span></span>
+  <span>last word <span class="v" id="hLast">–</span></span>
+  <span>step <span class="v" id="hStep">–</span></span>
+  <span>rtf <span class="v" id="hRtf">–</span></span>
+  <span><span class="v" id="hAudio">0.0</span> s</span>
+  <span class="meter"><i id="lvl"></i></span>
+  <span class="spacer"></span>
+  <span id="msg"></span>
+  <button id="lat" title="Show per-word latency">ms</button>
+  <button id="reset" disabled>Clear</button>
+  <button id="save" disabled>Save session</button>
+  <button id="theme" title="Light / dark">◐</button>
+</footer>
+<script>
+const $ = (id) => document.getElementById(id);
+const WORKLET = `
+class Cap extends AudioWorkletProcessor {
+  constructor() { super(); this.buf = new Int16Array(2560); this.n = 0; }
+  process(inputs) {
+    const ch = inputs[0][0];
+    if (!ch) return true;
+    for (let i = 0; i < ch.length; i++) {
+      const v = Math.max(-1, Math.min(1, ch[i]));
+      this.buf[this.n++] = v < 0 ? v * 32768 : v * 32767;
+      if (this.n === 2560) { this.port.postMessage(this.buf.buffer, [this.buf.buffer]); this.buf = new Int16Array(2560); this.n = 0; }
+    }
+    return true;
+  }
+}
+registerProcessor('cap', Cap);`;
+
+let ws, ctx, stream, node, recording = false;
+const ms = (v) => v == null ? '–' : Math.round(v) + ' ms';
+
+function connect() {
+  ws = new WebSocket(`ws://${location.host}/ws`);
+  ws.onopen = () => setState('ready');
+  ws.onclose = () => { setState('disconnected'); stop(true); setTimeout(connect, 1500); };
+  ws.onmessage = (e) => {
+    const m = JSON.parse(e.data);
+    if (m.type === 'ready') { $('rec').disabled = false; $('reset').disabled = false; $('save').disabled = false; sendConfig(); }
+    else if (m.type === 'state' || m.type === 'stopped') render(m);
+    else if (m.type === 'saved') flash('saved to ' + m.path);
+    else if (m.type === 'error') flash(m.message);
+  };
+}
+
+function setState(s) { $('state').textContent = s; }
+function flash(t) { $('msg').textContent = t; clearTimeout(flash.t); flash.t = setTimeout(() => $('msg').textContent = '', 6000); }
+function sendConfig() {
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify({cmd: 'config',
+    mode: document.querySelector('input[name=mode]:checked').value,
+    lm: document.querySelector('input[name=lm]:checked').value === '1'}));
+}
+function render(m) {
+  const box = $('text');
+  const atBottom = box.parentElement.scrollHeight - box.parentElement.scrollTop - box.parentElement.clientHeight < 40;
+  const frag = document.createDocumentFragment();
+  m.settled.forEach((w) => {
+    const s = document.createElement('span');
+    s.className = 'w';
+    s.textContent = w.w;
+    if (w.lat_ms != null) { s.dataset.lat = w.lat_ms; s.title = `${w.lat_ms} ms after the word ended`; }
+    frag.append(s, ' ');
+  });
+  m.tentative.forEach((w, i) => {
+    const s = document.createElement('span');
+    s.className = 'w ' + (i === m.tentative.length - 1 && m.pending_last ? 'p' : 't');
+    s.textContent = w;
+    frag.append(s, ' ');
+  });
+  box.replaceChildren(frag);
+  if (atBottom) box.parentElement.scrollTop = box.parentElement.scrollHeight;
+  const h = m.hud;
+  $('hMed').textContent = ms(h.lat_median); $('hP90').textContent = ms(h.lat_p90); $('hLast').textContent = ms(h.lat_last);
+  $('hStep').textContent = h.step_ms == null ? '–' : h.step_ms.toFixed(1) + ' ms';
+  $('hRtf').textContent = h.rtf == null ? '–' : h.rtf.toFixed(3);
+  $('hAudio').textContent = m.t_audio.toFixed(1);
+  if (m.level != null) $('lvl').style.width = Math.max(0, Math.min(100, (m.level + 70) * 1.6)) + '%';
+}
+
+async function start() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({audio: {channelCount: 1, echoCancellation: false,
+      noiseSuppression: false, autoGainControl: false}});
+  } catch (e) { flash('microphone blocked: allow it for this page and for the browser in System Settings'); return; }
+  ctx = new AudioContext({sampleRate: 16000});
+  await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([WORKLET], {type: 'application/javascript'})));
+  node = new AudioWorkletNode(ctx, 'cap');
+  node.port.onmessage = (e) => { if (recording && ws.readyState === 1) ws.send(e.data); };
+  ctx.createMediaStreamSource(stream).connect(node);
+  recording = true;
+  document.body.classList.add('live'); $('rec').textContent = 'Stop'; setState('listening');
+}
+
+function stop(silent) {
+  if (!recording) return;
+  recording = false;
+  if (node) node.disconnect();
+  if (stream) stream.getTracks().forEach((t) => t.stop());
+  if (ctx) ctx.close();
+  document.body.classList.remove('live'); $('rec').textContent = 'Start';
+  if (!silent && ws.readyState === 1) { ws.send(JSON.stringify({cmd: 'stop'})); setState('stopped'); }
+}
+
+$('rec').onclick = () => {
+  if (recording) { stop(false); return; }
+  if ($('state').textContent === 'stopped') ws.send(JSON.stringify({cmd: 'reset'}));
+  start();
+};
+$('reset').onclick = () => { if (recording) stop(true); ws.send(JSON.stringify({cmd: 'reset'})); setState('ready'); };
+$('save').onclick = () => ws.send(JSON.stringify({cmd: 'save'}));
+$('lat').onclick = () => $('text').classList.toggle('lat');
+document.querySelectorAll('input[name=mode], input[name=lm]').forEach((i) => i.onchange = sendConfig);
+$('theme').onclick = () => {
+  const r = document.documentElement, dark = matchMedia('(prefers-color-scheme: dark)').matches;
+  const cur = r.dataset.theme || (dark ? 'dark' : 'light');
+  r.dataset.theme = cur === 'dark' ? 'light' : 'dark';
+  localStorage.theme = r.dataset.theme;
+};
+if (localStorage.theme) document.documentElement.dataset.theme = localStorage.theme;
+connect();
+</script>
+</body>
+</html>
