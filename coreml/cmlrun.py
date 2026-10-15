@@ -72,7 +72,8 @@ class V1CoreML:
         self.models, self.load_s = {}, {}
         # Core ML releases a prediction's input feature values later, on its own queue; if Python has
         # dropped the arrays by then the process segfaults (MLE5ExecutionStream resetAfterLingering).
-        # So every window keeps its input buffers for the model's lifetime and reuses them.
+        # So every window keeps its input buffers for the model's lifetime and reuses them. Keep them
+        # float32 / int32: Core ML re-reads those after in-place changes, but caches fp16 inputs from first use.
         self._inputs, self._lock = {}, threading.Lock()
         for w in windows or WINDOWS:
             t0 = time.time()
