@@ -47,7 +47,7 @@ def meta():
 @pytest.fixture
 def record(request, meta):
     def rec(metrics, passed):
-        marker = next((m.name for m in request.node.iter_markers() if m.name in ("fast", "full", "release")), None)
+        marker = next((m.name for m in request.node.iter_markers() if m.name in ("fast", "full", "release", "stream")), None)
         row = {"time": time.strftime("%F %T"), "test": request.node.name, "marker": marker, "pass": bool(passed),
                "metrics": metrics, **meta}
         with open(RESULTS, "a") as f:
