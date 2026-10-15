@@ -35,13 +35,13 @@ when you are ready. The check outputs quoted below were produced on 2026-10-14 a
 | `cache_feats.py`, `featstore.py` | mel + Gemma audio tower features, int8 shard store |
 | `probe.py`, `diag.py`, `head.py`, `eval_head.py`, `train_tokenizer.py`, `watch.py`, `test_*.py` | layer probe, CTC head training / eval, tokenizer, log watcher, tests |
 | `decode/` | decoding study: `dec_*.py` decoders, `run_decode.py`, `sweep.py`, `tune.py`, `report.py`, `streaming.py`, `stream_study.py`, `build_subword_lm.py`, pinned `requirements-*.txt` |
-| `coreml/` | Core ML export (`common.py`, `wrapper.py`, `export.py`, `export_release.py` = the release package, `palettize.py`), runtime (`cmlrun.py`, `transcribe.py`, streaming / live runners), evaluation (`eval_fast.py`, `placement.py`, `bench.py`, `summary.py`), `tests/` (T1–T11) |
+| `coreml/` | Core ML export (`common.py`, `wrapper.py`, `export.py`, `export_release.py` = the release package, `palettize.py`), runtime (`cmlrun.py`, `transcribe.py`, streaming runners, offline latency tools), evaluation (`eval_fast.py`, `placement.py`, `bench.py`, `summary.py`), `tests/` (T1–T11) |
 | `embed/`, `demo/` | one-pass transcript + EmbeddingGemma 2 embedding, demo CLI |
 | `Makefile` | `make test-fast / test-full / test-release / bench / summary` |
 | `release/` | this file, `make_hf_release.py`, `hf_model_card_template.md`, `LICENSE-2.0.txt` (Apache License 2.0 text) |
 
-At the time of writing (the main session commits them): untracked `coreml/LIVE.md`, `coreml/export_release.py`, `coreml/live.py`, `coreml/live_latency.py`, `coreml/livecore.py`, `coreml/palettize.py`, `coreml/stream_latency.py`, `coreml/stream_mel.py`, `coreml/stream_runner.py`, `coreml/stream_step.py`, `coreml/tests/test_stream.py`, `release/LICENSE-2.0.txt`; modified `coreml/bench.py`, `coreml/cmlrun.py`, `coreml/placement.py`, `coreml/summary.py`, `coreml/tests/conftest.py`, `coreml/tests/test_fast.py`, `coreml/tests/test_full.py`, `release/hf_model_card_template.md`, `release/make_hf_release.py`.
-Tracked files: 64, 592K in total, so the repo itself is tiny.
+At the time of writing (the main session commits them): untracked `coreml/live_latency.py`, `coreml/livecore.py`, `coreml/stream_latency.py`, `coreml/stream_mel.py`, `coreml/stream_runner.py`, `coreml/stream_step.py`, `coreml/tests/test_stream.py`.
+Tracked files: 67, 632K in total, so the repo itself is tiny.
 
 **Excluded by `.gitignore`:**
 
@@ -158,11 +158,11 @@ the patch below fixes them):
 **Documentation and usage strings** (docstrings, comments, `README.md`): they show `~/gemma_stt/...`
 and `~/.venv-*` as examples. They are harmless; you could rewrite them to `$GEMMA_STT_HOME/...`.
 
-<details><summary>Full grep output (170 lines)</summary>
+<details><summary>Full grep output (149 lines)</summary>
 
 ```
-Makefile:7:#   make summary        rebuild ~/gemma_stt/coreml/summary.md from results.jsonl
-Makefile:8:PY ?= $(HOME)/.venv-coreml/bin/python
+Makefile:8:#   make summary        rebuild ~/gemma_stt/coreml/summary.md from results.jsonl
+Makefile:9:PY ?= $(HOME)/.venv-coreml/bin/python
 README.md:8:| `setup.sh` | Python 3.12 venv at `~/.venv-gemma-stt` (separate from vllm-metal) |
 README.md:24:source ~/.venv-gemma-stt/bin/activate
 README.md:33:bash download_librispeech.sh ~/gemma_stt/data train-clean-100 dev-clean
@@ -184,24 +184,6 @@ cache_feats.py:14:      --taps L6 L9 L11 --out ~/gemma_stt/feats/probe/train --v
 cache_feats.py:16:      --taps L6 L9 L11 --out ~/gemma_stt/feats/probe/dev
 cache_feats.py:21:      --taps L11 --int8 --out ~/gemma_stt/feats/full/train
 cache_feats.py:302:    ap.add_argument("--data-root", default="~/gemma_stt/data")
-coreml/LIVE.md:10:Everything is in `~/.venv-coreml`. The app needs one extra package, `sounddevice` (its macOS wheel
-coreml/LIVE.md:12:already built into `~/.venv-coreml` (kenlm 0.2.0, from the pinned source, recipe in the versions file).
-coreml/LIVE.md:13:Versions added to the env are listed in `~/gemma_stt/coreml/VERSIONS_ADDED.md`.
-coreml/LIVE.md:16:~/.venv-coreml/bin/pip install sounddevice==0.5.6
-coreml/LIVE.md:17:~/.venv-coreml/bin/python -c "import sounddevice, kenlm; print(sounddevice.__version__)"
-coreml/LIVE.md:24:From the repo root (`~/emb_gemma2`):
-coreml/LIVE.md:28:~/.venv-coreml/bin/python coreml/live.py
-coreml/LIVE.md:31:~/.venv-coreml/bin/python coreml/live.py --mode A --device "MacBook Pro Microphone"
-coreml/LIVE.md:32:~/.venv-coreml/bin/python coreml/live.py --list-devices
-coreml/LIVE.md:35:~/.venv-coreml/bin/python coreml/live.py --mode C --replay ~/gemma_stt/coreml/live_sessions/dev-clean_6345-93306_0021-0025.flac
-coreml/LIVE.md:38:~/.venv-coreml/bin/python coreml/live.py --replay FILE --fast --exit-at-end --session ~/gemma_stt/coreml/live_sessions/try1
-coreml/LIVE.md:43:`~/gemma_stt/coreml/compiled/` (about a minute); later starts load the compiled models. In replay
-coreml/LIVE.md:72:| `c` | save the transcript to `~/gemma_stt/coreml/live_sessions/transcript-YYYYMMDD-HHMMSS.txt` (or the `--session` folder) and copy it to the clipboard |
-coreml/LIVE.md:153:| Mode C ends with `engine stopped: ModuleNotFoundError: No module named 'kenlm'` | The LM fusion decoder needs `kenlm` in `~/.venv-coreml` (see the build recipe in `VERSIONS_ADDED.md`); mode A works without it. |
-coreml/LIVE.md:179:  script -q ~/gemma_stt/coreml/live_sessions/take1.ansi \
-coreml/LIVE.md:180:      ~/.venv-coreml/bin/python coreml/live.py --mode C --replay FILE --exit-at-end \
-coreml/LIVE.md:181:      --session ~/gemma_stt/coreml/live_sessions/take1
-coreml/LIVE.md:189:Sample sessions are in `~/gemma_stt/coreml/live_sessions/`:
 coreml/bench.py:4:  ~/.venv-coreml/bin/python coreml/bench.py [--configs fp16:CPU_AND_NE fp16:CPU_AND_GPU fp16:CPU_ONLY fp32:CPU_AND_GPU]
 coreml/bench.py:30:CACHE = Path.home() / "Library/Caches/org.python.python/com.apple.e5rt.e5bundlecache"
 coreml/bisect_ane.py:5:  ~/.venv-coreml/bin/python coreml/bisect_ane.py [--parts layer sscp head int8] [--variant faithful]
@@ -219,23 +201,20 @@ coreml/eval_fast.py:4:  ~/.venv-coreml/bin/python coreml/eval_fast.py --variant 
 coreml/export.py:4:  ~/.venv-coreml/bin/python coreml/export.py --windows 5s 10s 20s 35s --variant faithful --precision fp16
 coreml/export_release.py:8:  ~/.venv-coreml/bin/python coreml/export_release.py [--source fp16safe/fp16] [--verify-utts 60]
 coreml/fp16_layers.py:5:  ~/.venv-coreml/bin/python coreml/fp16_layers.py --variant faithful [--n 12]
-coreml/live.py:5:  ~/.venv-coreml/bin/python coreml/live.py [--mode A|C] [--device NAME|INDEX]
-coreml/live.py:6:  ~/.venv-coreml/bin/python coreml/live.py --mode C --replay FILE [--fast] [--exit-at-end]
-coreml/live.py:34:SESSIONS = Path.home() / "gemma_stt/coreml/live_sessions"
-coreml/live.py:716:    home = str(Path.home())
 coreml/live_latency.py:6:  ~/.venv-coreml/bin/python coreml/live_latency.py [--limit N] [--shard I --nshards N]   # simulate
 coreml/live_latency.py:7:  ~/.venv-coreml/bin/python coreml/live_latency.py --calibrate [--quick]                 # idle machine
 coreml/live_latency.py:8:  ~/.venv-coreml/bin/python coreml/live_latency.py --report                             # tables
 coreml/live_latency.py:80:V1_HYPS = {s: Path.home() / f"gemma_stt/decode/results/{p}_{s}_cbd_sp6_beam32_units-piece/hyps.jsonl"
 coreml/make_reference.py:2:"""Fixed test lists and the PyTorch fp32 CPU reference outputs for FAST (run in ~/.venv-gemma-stt).
 coreml/make_reference.py:4:  ~/.venv-gemma-stt/bin/python coreml/make_reference.py
-coreml/palettize.py:4:  ~/.venv-coreml/bin/python coreml/palettize.py --builds g8 g16 pt [--windows 5s 10s 20s 35s] [--device mps]
+coreml/palettize.py:5:  ~/.venv-coreml/bin/python coreml/palettize.py --groups 8 [16] [--windows 5s 10s 20s 35s] [--device mps]
 coreml/placement.py:4:  ~/.venv-coreml/bin/python coreml/placement.py --variant faithful --precision fp16 [--windows 5s ...]
-coreml/stream_latency.py:4:  ~/.venv-coreml/bin/python coreml/stream_latency.py [--split dev-clean] [--limit N]
-coreml/stream_latency.py:19:(~/gemma_stt/decode/logprobs/<split>.npy, V1's PyTorch log-probs). Step j returns frames [4j-4, 4j),
-coreml/stream_latency.py:27:Outputs: ~/gemma_stt/coreml/stream/latency_<split>_<model>_<seg>_<timing>.{json,md,utts.jsonl}.
-coreml/stream_latency.py:45:V1_HYPS = {"dev-clean": Path.home() / "gemma_stt/decode/results/sweep_dev-clean_cbd_sp6_beam32_units-piece/hyps.jsonl",
-coreml/stream_latency.py:46:           "dev-other": Path.home() / "gemma_stt/decode/results/apply_dev-other_cbd_sp6_beam32_units-piece/hyps.jsonl"}
+coreml/stream_latency.py:4:  ~/.venv-coreml/bin/python coreml/stream_latency.py [--split dev-clean] [--sample N --seed 0] [--limit N]
+coreml/stream_latency.py:6:  ~/.venv-coreml/bin/python coreml/stream_latency.py --combine-full FULL.utts.jsonl ... \
+coreml/stream_latency.py:21:(~/gemma_stt/decode/logprobs/<split>.npy, V1's PyTorch log-probs). Step j returns frames [4j-4, 4j),
+coreml/stream_latency.py:31:Outputs: ~/gemma_stt/coreml/stream/latency_<split>_<model>_<seg>_<timing>[_s<N>seed<S>][_n<N>]
+coreml/stream_latency.py:51:V1_HYPS = {"dev-clean": Path.home() / "gemma_stt/decode/results/sweep_dev-clean_cbd_sp6_beam32_units-piece/hyps.jsonl",
+coreml/stream_latency.py:52:           "dev-other": Path.home() / "gemma_stt/decode/results/apply_dev-other_cbd_sp6_beam32_units-piece/hyps.jsonl"}
 coreml/stream_step.py:5:Plan: ~/gemma_stt/coreml/STREAMING_PLAN.md (sections 2, 3, 5). Call j (0-based, C = 4 L11 frames per
 coreml/stream_step.py:19:Packages: ~/gemma_stt/coreml/models/stream/<variant>_<precision>/v1_step_<mech>.mlpackage (+ a
 coreml/stream_step.py:22:  ~/.venv-coreml/bin/python coreml/stream_step.py spec                    # state table from the config
@@ -245,7 +224,7 @@ coreml/stream_step.py:25:  ~/.venv-coreml/bin/python coreml/stream_step.py place
 coreml/stream_step.py:26:  ~/.venv-coreml/bin/python coreml/stream_step.py bench --mech state      # idle machine only (SLOT)
 coreml/summary.py:2:"""Summarize ~/gemma_stt/coreml/results.jsonl into ~/gemma_stt/coreml/summary.md: one section per
 coreml/summary.py:5:  ~/.venv-coreml/bin/python coreml/summary.py
-coreml/tests/conftest.py:5:~/gemma_stt/coreml/results.jsonl with the run id, versions, model weight hashes and git commit.
+coreml/tests/conftest.py:6:~/gemma_stt/coreml/results.jsonl with the run id, versions, model weight hashes and git commit.
 coreml/tests/test_release.py:15:PHONON2 = Path.home() / "gemma_stt/phonon2/results"
 coreml/transcribe.py:5:  ~/.venv-coreml/bin/python coreml/transcribe.py AUDIO [AUDIO ...] [--compute-units CPU_AND_NE] [--json]
 decode/build_subword_lm.py:10:Run with ~/.venv-gemma-stt/bin/python (needs sentencepiece only).
@@ -335,20 +314,19 @@ watch.py:192:                    help="log file, or a directory to follow its ne
 
 </details>
 
-**Data-root defaults in files the patch does not cover** (newer work: the embedding one-pass, streaming and live runners). They should read `GEMMA_STT_HOME` the same way; re-run the grep once they are final:
+**Data-root defaults in files the patch does not cover** (newer work: the embedding one-pass, streaming runners and offline latency tools). They should read `GEMMA_STT_HOME` the same way; re-run the grep once they are final:
 
 | file:line | code |
 |---|---|
-| `coreml/live.py:34` | `SESSIONS = Path.home() / "gemma_stt/coreml/live_sessions"` |
 | `coreml/live_latency.py:80` | `V1_HYPS = {s: Path.home() / f"gemma_stt/decode/results/{p}_{s}_cbd_sp6_beam32_units-piece/hyps.jsonl"` |
-| `coreml/stream_latency.py:45` | `V1_HYPS = {"dev-clean": Path.home() / "gemma_stt/decode/results/sweep_dev-clean_cbd_sp6_beam32_units-piece/hyps.jsonl",` |
-| `coreml/stream_latency.py:46` | `"dev-other": Path.home() / "gemma_stt/decode/results/apply_dev-other_cbd_sp6_beam32_units-piece/hyps.jsonl"}` |
+| `coreml/stream_latency.py:51` | `V1_HYPS = {"dev-clean": Path.home() / "gemma_stt/decode/results/sweep_dev-clean_cbd_sp6_beam32_units-piece/hyps.jsonl",` |
+| `coreml/stream_latency.py:52` | `"dev-other": Path.home() / "gemma_stt/decode/results/apply_dev-other_cbd_sp6_beam32_units-piece/hyps.jsonl"}` |
 | `embed/check_reference.py:35` | `OUT = Path.home() / "gemma_stt/embed"` |
 | `embed/check_reference.py:36` | `V1_HYPS = Path.home() / "gemma_stt/decode/results/sweep_dev-clean_cbd_sp6_beam32_units-piece/hyps.jsonl"` |
 | `embed/cost.py:94` | `ap.add_argument("--out", default=str(Path.home() / "gemma_stt/embed/cost.json"))` |
 | `embed/retrieval.py:12` | `G = Path.home() / "gemma_stt"` |
 
-`coreml/live.py:716` and `demo/embed_and_transcribe.py:174` (`home = str(Path.home())`) only shorten printed paths; keep them.
+`demo/embed_and_transcribe.py:174` (`home = str(Path.home())`) only shortens printed paths; keep it.
 
 **Embedded paths in V1 artifacts** (found by the release script's scan):
 - `spm_unigram256.model` (released): SentencePiece stores its `model_prefix`,
