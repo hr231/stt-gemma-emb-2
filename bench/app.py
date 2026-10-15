@@ -173,7 +173,7 @@ class Session:
 
 def build_app(model, beam):
     from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-    from fastapi.responses import FileResponse
+    from fastapi.responses import FileResponse, Response
 
     app = FastAPI()
     busy = asyncio.Lock()
@@ -181,6 +181,13 @@ def build_app(model, beam):
     @app.get("/")
     def index():
         return FileResponse(STATIC / "index.html")
+
+    @app.get("/replay.pcm")
+    def replay_pcm(path: str):
+        """A 16 kHz mono audio file as little-endian int16, the format the page's mic capture sends."""
+        from common import load_audio
+        pcm = (np.clip(load_audio(path), -1, 1) * 32767).astype("<i2")
+        return Response(pcm.tobytes(), media_type="application/octet-stream")
 
     @app.websocket("/ws")
     async def ws(sock: WebSocket):

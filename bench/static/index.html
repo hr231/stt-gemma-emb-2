@@ -44,7 +44,7 @@
   .seg label:last-of-type { border-radius: 0 6px 6px 0; }
   .seg input:checked + label { color: var(--fg); border-color: var(--muted); position: relative; }
   main { overflow-y: auto; padding: 34px 0 40px; }
-  #text { font-size: 23px; line-height: 1.62; max-width: 760px; min-height: 40vh; }
+  #text { font-size: var(--font, 23px); line-height: 1.55; max-width: var(--measure, 760px); min-height: 40vh; }
   #text .w { cursor: default; border-radius: 3px; }
   #text .w:hover { background: var(--panel); }
   #text .t { color: var(--muted); }
@@ -55,14 +55,16 @@
   .hint { color: var(--muted); font-size: 15px; line-height: 1.6; max-width: 560px; }
   .hint code { font-family: var(--mono); font-size: 13px; }
   footer { border-top: 1px solid var(--faint); padding: 12px 0 18px; display: flex; gap: 26px; align-items: baseline;
-    font-family: var(--mono); font-size: 12px; color: var(--muted); flex-wrap: wrap; }
-  footer .v { color: var(--fg); font-size: 13px; }
+    font-family: var(--mono); font-size: var(--hud, 12px); color: var(--muted); flex-wrap: wrap; }
+  footer .v { color: var(--fg); font-size: var(--hudv, 13px); }
   .meter { width: 70px; height: 4px; background: var(--faint); border-radius: 2px; overflow: hidden; align-self: center; }
   .meter i { display: block; height: 100%; width: 0; background: var(--muted); transition: width .12s linear; }
   #msg { color: var(--accent); }
+  #sync { position: fixed; top: 0; left: 0; right: 0; height: 6px; background: transparent; z-index: 9; }
 </style>
 </head>
 <body>
+<div id="sync"></div>
 <header>
   <span class="mark"><b>V1</b> live bench</span>
   <span class="status" id="status"><span class="dot"></span><span id="state">connecting</span></span>
@@ -76,6 +78,7 @@
     <input type="radio" name="lm" id="lmOff" value="0"><label for="lmOff">no LM</label>
   </span>
   <button id="rec" disabled>Start</button>
+  <button id="play" hidden>Replay</button>
 </header>
 <main>
   <div id="text"><p class="hint">Press <b>Start</b> and speak. Settled words appear in normal text; words still
@@ -204,6 +207,40 @@ $('theme').onclick = () => {
   localStorage.theme = r.dataset.theme;
 };
 if (localStorage.theme) document.documentElement.dataset.theme = localStorage.theme;
+
+// URL options: ?theme=light&font=34&hud=16&measure=900&replay=/path/clip.flac&start_at=<epoch ms>
+// Replay sends the file's 16 kHz int16 samples over the same WebSocket as the microphone, frame j
+// (2560 samples) at the moment its last sample would have been captured: t0 + end_sample / 16 kHz.
+// The #sync strip turns red at t0 (clip time 0), for aligning a screen recording with the audio.
+const P = new URLSearchParams(location.search), css = document.documentElement.style;
+if (P.get('theme')) document.documentElement.dataset.theme = P.get('theme');
+if (P.get('font')) css.setProperty('--font', P.get('font') + 'px');
+if (P.get('hud')) { css.setProperty('--hud', P.get('hud') + 'px'); css.setProperty('--hudv', (+P.get('hud') + 1) + 'px'); }
+if (P.get('measure')) css.setProperty('--measure', P.get('measure') + 'px');
+async function replay() {
+  const buf = new Int16Array(await (await fetch('/replay.pcm?path=' + encodeURIComponent(P.get('replay')))).arrayBuffer());
+  if ($('state').textContent === 'stopped') ws.send(JSON.stringify({cmd: 'reset'}));
+  recording = true; document.body.classList.add('live'); $('rec').textContent = 'Stop'; setState('replay');
+  const t0 = performance.now();
+  $('sync').style.background = '#ff0000';
+  for (let a = 0; a < buf.length && recording; a += 2560) {
+    const b = Math.min(a + 2560, buf.length), wait = t0 + b / 16 - performance.now();
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    if (recording && ws.readyState === 1) ws.send(buf.slice(a, b).buffer);
+  }
+  if (!recording) return;
+  recording = false; document.body.classList.remove('live'); $('rec').textContent = 'Start';
+  ws.send(JSON.stringify({cmd: 'stop'})); setState('stopped');
+}
+if (P.get('replay')) {
+  $('text').replaceChildren();
+  $('play').hidden = false;
+  $('play').onclick = replay;
+  const at = +P.get('start_at');
+  if (at) (function wait() {
+    if (ws && ws.readyState === 1 && Date.now() >= at) replay(); else setTimeout(wait, 5);
+  })();
+}
 connect();
 </script>
 </body>
