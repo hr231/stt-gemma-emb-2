@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>V1 · bench</title>
+<style>
+  :root { --bg: #fbfaf7; --fg: #1f1f1d; --muted: #8b8a85; --faint: #d9d7d0; --panel: #f3f1ec;
+    --accent: #b5651d; --ok: #3d7a4f; --bad: #b3412f; --ins: #2f6d8f;
+    --mono: ui-monospace, "SF Mono", Menlo, monospace; --sans: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--sans); }
+  body { max-width: 980px; margin: 0 auto; padding: 0 28px; font-size: var(--base, 16px); }
+  header { display: flex; align-items: center; gap: 22px; padding: 22px 0 18px; border-bottom: 1px solid var(--faint); }
+  .mark { font-family: var(--mono); font-size: 13px; }
+  .mark b { font-weight: 600; }
+  nav a { font-size: 14px; color: var(--muted); text-decoration: none; margin-right: 16px; }
+  nav a.on { color: var(--fg); border-bottom: 1px solid var(--fg); padding-bottom: 3px; }
+  section { display: none; padding-top: 30px; }
+  section.on { display: block; }
+  .label { font: 12px var(--mono); color: var(--muted); letter-spacing: .03em; text-transform: uppercase; margin-bottom: 8px; }
+  .card { border: 1px solid var(--faint); border-radius: 10px; padding: 22px 24px; }
+  .drop { border-style: dashed; display: flex; align-items: center; gap: 18px; }
+  .drop.got { border-style: solid; background: var(--panel); }
+  .fname { font-size: 1.25em; }
+  .fmeta { font: 14px var(--mono); color: var(--muted); }
+  #timer { font: 600 var(--timer, 120px) var(--mono); letter-spacing: -.02em; margin: 34px 0 6px; font-variant-numeric: tabular-nums; }
+  #timer.done { color: var(--ok); }
+  #tsub { font: 18px var(--mono); color: var(--muted); min-height: 1.4em; }
+  #ftext { margin-top: 28px; font-size: 1.1em; line-height: 1.55; color: var(--fg);
+    max-height: 9.3em; overflow: hidden; -webkit-mask-image: linear-gradient(#000 60%, transparent); }
+  .row { margin: 24px 0; }
+  .line { font-size: var(--font, 24px); line-height: 1.55; }
+  .sub { background: rgba(181, 101, 29, .18); color: var(--accent); border-radius: 3px; padding: 0 2px; }
+  .del { color: var(--bad); text-decoration: line-through; }
+  .ins { color: var(--ins); border-bottom: 2px solid var(--ins); }
+  #wer { font: 600 var(--timer, 64px) var(--mono); }
+  #wsub { font: 16px var(--mono); color: var(--muted); }
+  .legend { font: 13px var(--mono); color: var(--muted); display: flex; gap: 18px; margin-top: 8px; }
+  #sync { position: fixed; top: 0; left: 0; right: 0; height: 6px; background: transparent; z-index: 9; }
+</style>
+</head>
+<body>
+<div id="sync"></div>
+<header>
+  <span class="mark"><b>V1</b> bench</span>
+  <nav><a href="/">Live</a><a id="tFile" href="/tools?view=file">File</a><a id="tSpot" href="/tools?view=spot">Spot check</a></nav>
+</header>
+
+<section id="file">
+  <div class="label">Offline · Core ML release package · Neural Engine</div>
+  <div class="card drop" id="drop">
+    <div><div class="fname" id="fname">Drop an audio file</div><div class="fmeta" id="fmeta">wav · flac</div></div>
+  </div>
+  <div id="timer">0:00.0</div>
+  <div id="tsub"></div>
+  <div id="ftext"></div>
+</section>
+
+<section id="spot">
+  <div class="label" id="slabel">Spot check · random clip</div>
+  <div class="row"><div class="label">Reference</div><div class="line" id="sref"></div></div>
+  <div class="row"><div class="label">Model output</div><div class="line" id="shyp"></div></div>
+  <div class="legend"><span><span class="sub">word</span> substituted</span><span><span class="del">word</span> missed</span><span><span class="ins">word</span> inserted</span></div>
+  <div class="row"><div class="label">Word error rate, this clip</div><span id="wer">–</span> <span id="wsub"></span></div>
+</section>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const P = new URLSearchParams(location.search), css = document.documentElement.style;
+['font', 'timer', 'base'].forEach((k) => P.get(k) && css.setProperty('--' + k, P.get(k) + 'px'));
+const view = P.get('view') || 'file';
+$(view).classList.add('on'); $(view === 'file' ? 'tFile' : 'tSpot').classList.add('on');
+const at = (t, fn) => { const go = () => Date.now() >= t ? fn() : setTimeout(go, 5); go(); };
+const fmt = (s) => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, '0')}`;
+const esc = (s) => s.replace(/[&<>]/g, (c) => ({'&': '&amp;', '<': '&lt;', '>': '&gt;'}[c]));
+
+// File: the offline transcription of a file on this Mac (?path=), timed from the moment it is handed to the
+// model ("dropped") to the moment the text is back. The timer is the page's own clock (performance.now).
+async function runFile() {
+  const path = P.get('path');
+  $('drop').classList.add('got');
+  $('fname').textContent = path.split('/').pop();
+  $('fmeta').textContent = P.get('meta') || '';
+  const t0 = performance.now();
+  $('sync').style.background = '#ff0000';
+  const tick = setInterval(() => $('timer').textContent = fmt((performance.now() - t0) / 1e3), 50);
+  const r = await (await fetch('/api/transcribe', {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({path})})).json();
+  const el = (performance.now() - t0) / 1e3;
+  clearInterval(tick);
+  $('timer').textContent = fmt(el); $('timer').classList.add('done');
+  $('tsub').textContent = `${fmt(r.audio_s)} of audio in ${el.toFixed(1)} s · ${(r.audio_s / el).toFixed(0)}× real time`;
+  $('ftext').textContent = r.text;
+  window.__result = {...r, page_s: el};
+}
+
+async function runSpot() {
+  const seed = +(P.get('seed') || 0), draw = +(P.get('draw') || 0), split = P.get('split') || 'test-clean';
+  const r = await (await fetch(`/api/spot?split=${split}&seed=${seed}&draw=${draw}`)).json();
+  $('slabel').textContent = `Spot check · ${split} · ${r.id} · random draw ${draw} with seed ${seed} (of ${r.n_utts}) · ${r.audio_s.toFixed(1)} s`;
+  let ref = [], hyp = [];
+  for (const [op, a, b] of r.ops) {
+    if (op === '=') { ref.push(esc(a)); hyp.push(esc(b)); }
+    else if (op === 'sub') { ref.push(`<span class="sub">${esc(a)}</span>`); hyp.push(`<span class="sub">${esc(b)}</span>`); }
+    else if (op === 'del') { ref.push(`<span class="del">${esc(a)}</span>`); }
+    else { hyp.push(`<span class="ins">${esc(b)}</span>`); }
+  }
+  $('sref').innerHTML = ref.join(' '); $('shyp').innerHTML = hyp.join(' ');
+  $('wer').textContent = (100 * r.wer).toFixed(1) + '%';
+  $('wsub').textContent = `${r.edits} edit${r.edits === 1 ? '' : 's'} / ${r.ref_words} words`;
+  window.__result = r;
+}
+
+const start = +P.get('start_at');
+if (view === 'file' && P.get('path')) start ? at(start, runFile) : $('drop').onclick = runFile;
+if (view === 'spot') start ? at(start, runSpot) : runSpot();
+</script>
+</body>
+</html>

@@ -241,6 +241,17 @@ if (P.get('replay')) {
     if (ws && ws.readyState === 1 && Date.now() >= at) replay(); else setTimeout(wait, 5);
   })();
 }
+// ?mic_at=<epoch ms>&rec_s=N: start the microphone at mic_at (sync strip turns red once capture runs),
+// stop after N s and save the session (audio.wav + session.json under ~/gemma_stt/bench_sessions/).
+if (+P.get('mic_at')) (function waitMic() {
+  if (!(ws && ws.readyState === 1 && Date.now() >= +P.get('mic_at'))) { setTimeout(waitMic, 5); return; }
+  $('text').replaceChildren();
+  start().then(() => {
+    $('sync').style.background = '#ff0000';
+    const d = +P.get('rec_s');
+    if (d) setTimeout(() => { stop(false); setTimeout(() => ws.send(JSON.stringify({cmd: 'save'})), 1500); }, d * 1000);
+  });
+})();
 connect();
 </script>
 </body>

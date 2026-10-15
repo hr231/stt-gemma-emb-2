@@ -171,23 +171,111 @@ class Session:
             return str(d)
 
 
-def build_app(model, beam):
-    from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+def word_diff(ref, hyp):
+    """Word alignment (Levenshtein backtrace): list of (op, ref_word, hyp_word), op in = sub del ins."""
+    R, H = len(ref), len(hyp)
+    d = np.zeros((R + 1, H + 1), int)
+    d[:, 0], d[0, :] = np.arange(R + 1), np.arange(H + 1)
+    for i in range(1, R + 1):
+        for j in range(1, H + 1):
+            d[i, j] = min(d[i - 1, j] + 1, d[i, j - 1] + 1, d[i - 1, j - 1] + (ref[i - 1] != hyp[j - 1]))
+    ops, i, j = [], R, H
+    while i or j:
+        if i and j and d[i, j] == d[i - 1, j - 1] + (ref[i - 1] != hyp[j - 1]):
+            ops.append(("=" if ref[i - 1] == hyp[j - 1] else "sub", ref[i - 1], hyp[j - 1])); i, j = i - 1, j - 1
+        elif i and d[i, j] == d[i - 1, j] + 1:
+            ops.append(("del", ref[i - 1], None)); i -= 1
+        else:
+            ops.append(("ins", None, hyp[j - 1])); j -= 1
+    return ops[::-1], int(d[R, H])
+
+
+def build_app(model, beam, tr):
+    from fastapi import Body, FastAPI, WebSocket, WebSocketDisconnect
     from fastapi.responses import FileResponse, Response
+    from common import load_audio, load_list
 
     app = FastAPI()
     busy = asyncio.Lock()
+    offline = threading.Lock()
 
     @app.get("/")
     def index():
         return FileResponse(STATIC / "index.html")
 
+    @app.get("/tools")
+    def tools():
+        return FileResponse(STATIC / "tools.html")
+
     @app.get("/replay.pcm")
     def replay_pcm(path: str):
         """A 16 kHz mono audio file as little-endian int16, the format the page's mic capture sends."""
-        from common import load_audio
         pcm = (np.clip(load_audio(path), -1, 1) * 32767).astype("<i2")
         return Response(pcm.tobytes(), media_type="application/octet-stream")
+
+    def pause_chunks(wav, n_mel, min_gap_s=0.25, max_mel=3500):
+        """Cut points (mel frames, on the 4-frame output grid) in the middle of every silence of at least
+        min_gap_s (10 ms frame energy below the loudest frame - 35 dB); chunks longer than max_mel are
+        split evenly."""
+        fr = wav[: len(wav) // 160 * 160].reshape(-1, 160)
+        quiet = 10 * np.log10((fr ** 2).mean(1) + 1e-10) < 10 * np.log10((fr ** 2).mean(1).max() + 1e-10) - 35
+        cuts = [0]
+        i, N = 0, len(quiet)
+        while i < N:
+            if quiet[i]:
+                j = i
+                while j < N and quiet[j]:
+                    j += 1
+                if j - i >= int(min_gap_s * 100) and i > 0 and j < N:
+                    cuts.append(((i + j) // 2) // 4 * 4)
+                i = j
+            else:
+                i += 1
+        cuts.append(n_mel)
+        out = []
+        for a, b in zip(cuts[:-1], cuts[1:]):
+            k = -(-(b - a) // max_mel)
+            edges = [a + (b - a) * t // k // 4 * 4 for t in range(k)] + [b]
+            out += [(x, y) for x, y in zip(edges[:-1], edges[1:]) if y > x]
+        return out
+
+    def run_offline(path, min_gap_s=1.0):
+        """Offline Core ML release build: read file -> mel -> cut at pauses -> each chunk in the smallest
+        window that fits -> beam + LM per chunk (as the T10 benchmark, which runs utterance by utterance)."""
+        from common import mel
+        with offline:
+            t0 = time.perf_counter()
+            wav = load_audio(path)
+            m, n = mel(wav)
+            m = m[:n]
+            t1 = time.perf_counter()
+            chunks = pause_chunks(wav, n, min_gap_s)
+            lps = [tr.cml.predict(m[a:b], b - a)[0] for a, b in chunks]
+            t2 = time.perf_counter()
+            text = " ".join(t for t in (norm_text(tr.decoder.decode(lp)) for lp in lps) if t)
+            t3 = time.perf_counter()
+        audio_s = len(wav) / SR
+        return {"text": text, "audio_s": audio_s, "server_s": t3 - t0, "mel_s": t1 - t0, "model_s": t2 - t1,
+                "decode_s": t3 - t2, "rtfx": audio_s / (t3 - t0), "segments": len(chunks), "min_gap_s": min_gap_s,
+                "path": path}
+
+    @app.post("/api/transcribe")
+    async def api_transcribe(body: dict = Body(...)):
+        return await asyncio.to_thread(run_offline, body["path"], float(body.get("min_gap_s", 1.0)))
+
+    @app.get("/api/spot")
+    async def api_spot(split: str = "test-clean", seed: int = 0, draw: int = 0):
+        """Draw number `draw` (0-based) of random.Random(seed) over the split's utterances; no filtering."""
+        import random
+        utts = [u for u in load_list("release" if split.startswith("test") else "full") if u["split"] == split]
+        rng = random.Random(seed)
+        for _ in range(draw + 1):
+            u = rng.choice(utts)
+        r = await asyncio.to_thread(run_offline, u["audio"])
+        ref = norm_text(u.get("text") or u.get("ref")).split()
+        ops, edits = word_diff(ref, r["text"].split())
+        return r | {"id": u["id"], "split": split, "seed": seed, "draw": draw, "ref": " ".join(ref), "ops": ops,
+                    "edits": edits, "ref_words": len(ref), "wer": edits / max(1, len(ref)), "n_utts": len(utts)}
 
     @app.websocket("/ws")
     async def ws(sock: WebSocket):
@@ -244,8 +332,12 @@ def main():
     for _ in warm.feed(np.zeros(SR * 2, np.float32)):
         pass
     warm.reset()
-    print(f"[bench] step model + LM loaded in {time.time() - t0:.1f} s; open http://localhost:{args.port}", flush=True)
-    uvicorn.run(build_app(model, beam), host="127.0.0.1", port=args.port, log_level="warning")
+    from transcribe import Transcriber
+    tr = Transcriber()                                   # offline release package (all four windows)
+    for w in (1, 8, 18, 34):                            # warm every window function
+        tr.transcribe(np.zeros(int(SR * w), np.float32) + 1e-4)
+    print(f"[bench] step model + LM + offline release loaded in {time.time() - t0:.1f} s; open http://localhost:{args.port}", flush=True)
+    uvicorn.run(build_app(model, beam, tr), host="127.0.0.1", port=args.port, log_level="warning")
 
 
 if __name__ == "__main__":
